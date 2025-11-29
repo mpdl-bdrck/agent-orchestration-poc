@@ -131,7 +131,7 @@ Provide a clear, concise answer to the user's question."""
                 # Emit response via streaming callback
                 if streaming_callback:
                     try:
-                        streaming_callback("agent_response", response_content, {"agent": "supervisor"})
+                        streaming_callback("agent_response", response_content, {"agent": "orchestrator"})
                     except Exception as e:
                         logger.debug(f"Streaming callback error: {e}")
                 
@@ -141,7 +141,7 @@ Provide a clear, concise answer to the user's question."""
                     "next": "FINISH",
                     "current_task_instruction": "",
                     "messages": [AIMessage(content=response_content)],
-                    "agent_responses": state.get("agent_responses", []) + [{"agent": "supervisor", "response": response_content}]
+                    "agent_responses": state.get("agent_responses", []) + [{"agent": "orchestrator", "response": response_content}]
                 }
             
             # Use the instructions from the LLM's routing decision
