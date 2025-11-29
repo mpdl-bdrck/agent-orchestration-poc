@@ -33,10 +33,11 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
             # Use instruction if available, otherwise use original question
             query = instruction if instruction else user_question
             
-            # Emit streaming event
+            # Emit streaming event for semantic search tool call
             if streaming_callback:
                 try:
-                    streaming_callback("agent_call", "semantic_search", {"agent": "semantic_search"})
+                    # Show as tool call for visibility
+                    streaming_callback("tool_call", "semantic_search", {"tool": "semantic_search", "args": {"query": query}})
                 except Exception as e:
                     logger.debug(f"Streaming callback error: {e}")
             
@@ -44,6 +45,8 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
             search_result = semantic_search_func(query=query, chunk_types=None, limit=5)
             
             # Parse JSON result
+            result_data = None
+            result_count = 0
             try:
                 result_data = json.loads(search_result)
                 if result_data.get("error"):
@@ -51,6 +54,7 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
                 elif result_data.get("results"):
                     # Format results into readable response
                     results = result_data.get("results", [])
+                    result_count = len(results)
                     formatted_parts = []
                     for result in results[:5]:  # Limit to top 5
                         title = result.get("chunk_title", "Untitled")
@@ -65,17 +69,20 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
             except (json.JSONDecodeError, ValueError):
                 response = search_result
             
-            # Emit response via streaming callback
+            # Emit tool result for semantic_search
             if streaming_callback:
                 try:
-                    streaming_callback("agent_response", response, {"agent": "semantic_search"})
+                    # Show tool result summary
+                    streaming_callback("tool_result", "semantic_search", {"tool": "semantic_search", "count": result_count})
+                    # Also emit as search_response for backward compatibility
+                    streaming_callback("search_response", response, {"service": "semantic_search"})
                 except Exception as e:
                     logger.debug(f"Streaming callback error: {e}")
             
-            # Update state
+            # Update state (semantic_search is a search service, not an agent)
             return {
                 "messages": [AIMessage(content=response)],
-                "agent_responses": state.get("agent_responses", []) + [{"agent": "semantic_search", "response": response}],
+                "agent_responses": state.get("agent_responses", []) + [{"service": "semantic_search", "response": response}],
                 "current_task_instruction": ""  # Clear after processing
             }
             
@@ -84,7 +91,7 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
             error_response = f"Error in semantic search: {str(e)}"
             return {
                 "messages": [AIMessage(content=error_response)],
-                "agent_responses": state.get("agent_responses", []) + [{"agent": "semantic_search", "response": error_response}],
+                "agent_responses": state.get("agent_responses", []) + [{"service": "semantic_search", "response": error_response}],
                 "current_task_instruction": ""
             }
     

@@ -77,6 +77,9 @@ class CLIChat:
         elif event_type == "agent_call":
             agent_name = data.get('agent', '') if data else message
             self.display.show_reasoning(f"Calling {agent_name} agent...")
+        elif event_type == "search_call":
+            # Handle semantic_search as a tool call for visibility
+            self.display.show_tool_call("semantic_search", {"query": data.get("query", "") if data else ""})
         elif event_type == "tool_call":
             tool_name = data.get('tool', message) if data else message
             args = data.get('args', {}) if data else {}
@@ -86,6 +89,9 @@ class CLIChat:
             # Show brief tool result summary
             if tool_name == 'analyze_portfolio_pacing':
                 self.display.show_reasoning("✅ Portfolio analysis complete")
+            elif tool_name == 'semantic_search':
+                count = data.get('count', 0) if data else 0
+                self.display.show_reasoning(f"✅ Semantic search found {count} results")
         elif event_type == "agent_response":
             # Agent response using Rich Live + Panel
             agent_name = data.get('agent', '') if data else ''

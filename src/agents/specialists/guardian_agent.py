@@ -9,7 +9,7 @@ import logging
 import json
 from typing import Any, Dict, List, Optional
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..base_specialist import BaseSpecialistAgent
 from ...utils.observability import trace_agent
@@ -25,6 +25,61 @@ class PortfolioPacingInput(BaseModel):
     campaign_start: Optional[str] = Field(default=None, description="Campaign start date (YYYY-MM-DD) for pacing calculations")
     campaign_end: Optional[str] = Field(default=None, description="Campaign end date (YYYY-MM-DD) for pacing calculations")
     campaign_budget: Optional[float] = Field(default=None, description="Total campaign budget for pacing calculations")
+    
+    @field_validator('account_id', mode='before')
+    @classmethod
+    def normalize_account_id(cls, v):
+        """Normalize account_id, handling list inputs BEFORE any string operations."""
+        # CRITICAL: Handle list FIRST, before Pydantic tries to validate as string
+        if isinstance(v, list):
+            v = v[0] if len(v) > 0 else "17"
+        if v is None:
+            return "17"
+        # Now safe to convert to string and strip
+        return str(v).strip() if isinstance(v, str) else str(v)
+    
+    @field_validator('advertiser_filter', mode='before')
+    @classmethod
+    def normalize_advertiser_filter(cls, v):
+        """Normalize advertiser_filter, handling list inputs BEFORE any string operations."""
+        if isinstance(v, list):
+            v = v[0] if len(v) > 0 else None
+        if v is None:
+            return None
+        return str(v).strip() if isinstance(v, str) else str(v)
+    
+    @field_validator('campaign_start', mode='before')
+    @classmethod
+    def normalize_campaign_start(cls, v):
+        """Normalize campaign_start, handling list inputs BEFORE any string operations."""
+        if isinstance(v, list):
+            v = v[0] if len(v) > 0 else None
+        if v is None:
+            return None
+        return str(v).strip() if isinstance(v, str) else str(v)
+    
+    @field_validator('campaign_end', mode='before')
+    @classmethod
+    def normalize_campaign_end(cls, v):
+        """Normalize campaign_end, handling list inputs BEFORE any string operations."""
+        if isinstance(v, list):
+            v = v[0] if len(v) > 0 else None
+        if v is None:
+            return None
+        return str(v).strip() if isinstance(v, str) else str(v)
+    
+    @field_validator('campaign_budget', mode='before')
+    @classmethod
+    def normalize_campaign_budget(cls, v):
+        """Normalize campaign_budget, handling list inputs BEFORE any float conversion."""
+        if isinstance(v, list):
+            v = v[0] if len(v) > 0 else None
+        if v is None:
+            return None
+        try:
+            return float(v) if v else None
+        except (ValueError, TypeError):
+            return None
 
 
 class GuardianAgent(BaseSpecialistAgent):
@@ -181,7 +236,7 @@ unless portfolio data is explicitly needed for the response.
 
     def _analyze_portfolio_pacing(
         self,
-        account_id: str,
+        account_id: str = None,
         advertiser_filter: Optional[str] = None,
         campaign_start: Optional[str] = None,
         campaign_end: Optional[str] = None,
@@ -191,14 +246,47 @@ unless portfolio data is explicitly needed for the response.
         try:
             from ...tools.portfolio_pacing_tool import analyze_portfolio_pacing
             
+            # Defensive coding: handle list inputs from eager LLMs
+            def _normalize_string_arg(arg, default=None):
+                """Normalize argument to string, handling list inputs."""
+                if arg is None:
+                    return default
+                if isinstance(arg, list):
+                    if len(arg) > 0:
+                        arg = arg[0]
+                    else:
+                        return default
+                return str(arg).strip() if arg else default
+            
+            def _normalize_float_arg(arg, default=None):
+                """Normalize argument to float, handling list inputs."""
+                if arg is None:
+                    return default
+                if isinstance(arg, list):
+                    if len(arg) > 0:
+                        arg = arg[0]
+                    else:
+                        return default
+                try:
+                    return float(arg) if arg else default
+                except (ValueError, TypeError):
+                    return default
+            
+            # Normalize all arguments (defensive - LLM might pass lists)
+            account_id = _normalize_string_arg(account_id, "17")
+            advertiser_filter = _normalize_string_arg(advertiser_filter, "Lilly")
+            campaign_start = _normalize_string_arg(campaign_start, "2025-11-01")
+            campaign_end = _normalize_string_arg(campaign_end, "2025-11-30")
+            campaign_budget = _normalize_float_arg(campaign_budget, 233000.0)
+            
             # Hardcode values for Eli Lilly portfolio
             # Account 17 = Tricoast Media LLC
             # Half of current budget: $466,004.06 / 2 ≈ $233,000
-            hardcoded_account_id = "17"
-            hardcoded_advertiser = "Lilly"
-            hardcoded_campaign_start = "2025-11-01"
-            hardcoded_campaign_end = "2025-11-30"
-            hardcoded_campaign_budget = 233000.0  # Half of $466,004.06 (rounded)
+            hardcoded_account_id = account_id if account_id else "17"
+            hardcoded_advertiser = advertiser_filter if advertiser_filter else "Lilly"
+            hardcoded_campaign_start = campaign_start if campaign_start else "2025-11-01"
+            hardcoded_campaign_end = campaign_end if campaign_end else "2025-11-30"
+            hardcoded_campaign_budget = campaign_budget if campaign_budget else 233000.0
             
             return analyze_portfolio_pacing(
                 account_id=hardcoded_account_id,
@@ -252,6 +340,14 @@ When calling analyze_portfolio_pacing, use these defaults unless the user specif
         
         # If tools are available, use agent loop with tool calling
         if self.tools:
+            # CRITICAL: Skip tool calling for introductions/greetings based on supervisor instruction
+            if supervisor_instruction:
+                instruction_lower = supervisor_instruction.lower()
+                skip_tools_keywords = ["introduce", "say hi", "greeting", "forbidden", "do not use tools", "text only", "speak text"]
+                if any(keyword in instruction_lower for keyword in skip_tools_keywords):
+                    logger.info("Supervisor instruction forbids tool usage - skipping tool-based analysis")
+                    return super().analyze(question, context)
+            
             try:
                 from langchain_core.messages import SystemMessage, HumanMessage
                 from ...utils.agent_loop import execute_agent_loop
@@ -283,14 +379,14 @@ Only override these if the user explicitly specifies a different account or adve
                 # Bind tools to LLM
                 llm_with_tools = self.llm.bind_tools(self.tools)
                 
-                # Execute agent loop - don't stream tool results, only final response
+                # Execute agent loop - enable tool call visibility
                 result = execute_agent_loop(
                     llm_with_tools=llm_with_tools,
                     messages=messages,
                     tools=self.tools,
                     job_name="guardian_analysis",
                     max_iterations=5,
-                    streaming_callback=None,  # Don't stream tool results, only final response
+                    streaming_callback=self._emit_streaming_event if self.streaming_callback else None,  # Show tool calls
                     stream_response=True  # Enable streaming
                 )
                 

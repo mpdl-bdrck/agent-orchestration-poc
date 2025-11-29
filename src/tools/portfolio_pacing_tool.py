@@ -37,6 +37,41 @@ def analyze_portfolio_pacing(
     Returns:
         JSON string with portfolio insights
     """
+    # Defensive coding: handle list inputs from eager LLMs
+    def _normalize_string_arg(arg, default=None):
+        """Normalize argument to string, handling list inputs."""
+        if arg is None:
+            return default
+        if isinstance(arg, list):
+            if len(arg) > 0:
+                arg = arg[0]
+            else:
+                return default
+        return str(arg).strip() if arg else default
+    
+    def _normalize_float_arg(arg, default=None):
+        """Normalize argument to float, handling list inputs."""
+        if arg is None:
+            return default
+        if isinstance(arg, list):
+            if len(arg) > 0:
+                arg = arg[0]
+            else:
+                return default
+        try:
+            return float(arg) if arg else default
+        except (ValueError, TypeError):
+            return default
+    
+    # Normalize all string arguments
+    account_id = _normalize_string_arg(account_id, "17")
+    advertiser_filter = _normalize_string_arg(advertiser_filter)
+    start_date = _normalize_string_arg(start_date)
+    end_date = _normalize_string_arg(end_date)
+    campaign_start = _normalize_string_arg(campaign_start)
+    campaign_end = _normalize_string_arg(campaign_end)
+    campaign_budget = _normalize_float_arg(campaign_budget)
+    
     # Get absolute path to the shell script
     tools_dir = (Path(__file__).parent.parent.parent / "tools").resolve()
     script_path = tools_dir / "campaign-portfolio-pacing" / "run_campaign_portfolio_pacing.sh"

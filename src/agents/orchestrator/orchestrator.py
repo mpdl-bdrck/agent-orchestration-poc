@@ -345,8 +345,8 @@ Route to appropriate agent or use FINISH if no agents needed."""
                 if len(agent_responses) == 1 and agent_responses[0].get("agent") == "supervisor":
                     return agent_responses[0].get("response", "No response from supervisor.")
                 
-                # Check if we have semantic_search response only
-                if len(agent_responses) == 1 and agent_responses[0].get("agent") == "semantic_search":
+                # Check if we have semantic_search response only (semantic_search is a service, not an agent)
+                if len(agent_responses) == 1 and (agent_responses[0].get("agent") == "semantic_search" or agent_responses[0].get("service") == "semantic_search"):
                     # For semantic_search, return the response directly (it's already formatted)
                     return agent_responses[0].get("response", "No response from semantic search.")
                 

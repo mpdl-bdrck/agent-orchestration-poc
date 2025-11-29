@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class RouteDecision(BaseModel):
     """Structured routing decision from supervisor."""
     next: Literal["semantic_search", "guardian", "specialist", "optimizer", "pathfinder", "FINISH"] = Field(
-        description="The next node to route to: semantic_search for knowledge base queries, agent names for specialist routing, or FINISH if done."
+        description="The next node to route to: semantic_search (tool/service) for knowledge base queries, agent names for specialist routing, or FINISH if done."
     )
     instructions: str = Field(
         description="Specific, imperative instruction for the worker. "
@@ -69,7 +69,12 @@ def create_supervisor_node(llm, system_prompt: str, orchestrator_prompt: str = N
             
             # Check if we've already routed to agents
             agent_responses = state.get("agent_responses", [])
-            agents_called = [r.get("agent") for r in agent_responses]
+            # Extract agent/service names (semantic_search uses "service" key, others use "agent" key)
+            agents_called = []
+            for r in agent_responses:
+                agent_name = r.get("agent") or r.get("service")  # Support both "agent" and "service" keys
+                if agent_name:  # Only add non-None values
+                    agents_called.append(agent_name)
             
             # Build context for routing decision
             context_parts = [f"User question: {user_message}"]
@@ -77,9 +82,14 @@ def create_supervisor_node(llm, system_prompt: str, orchestrator_prompt: str = N
             if agent_responses:
                 context_parts.append(f"\nPrevious responses ({len(agent_responses)} total):")
                 for resp in agent_responses:
-                    agent_name = resp.get("agent", "unknown")
+                    # Support both "agent" and "service" keys (semantic_search uses "service")
+                    agent_name = resp.get("agent") or resp.get("service") or "unknown"
                     response_preview = resp.get("response", "")[:200]  # Truncate for context
-                    context_parts.append(f"- {agent_name}: {response_preview}...")
+                    # Distinguish between agents and tools/services
+                    if resp.get("service") == "semantic_search":
+                        context_parts.append(f"- semantic_search (tool): {response_preview}...")
+                    else:
+                        context_parts.append(f"- {agent_name} (agent): {response_preview}...")
             
             # Build messages for LLM routing decision
             messages = [
@@ -87,13 +97,16 @@ def create_supervisor_node(llm, system_prompt: str, orchestrator_prompt: str = N
                 HumanMessage(content=f"""{'\n'.join(context_parts)}
 
 Make a routing decision:
-- If semantic_search has responded and the question is answered → FINISH
+- If semantic_search (tool) has responded and the question is answered → FINISH
 - If agents have responded and the question is answered → FINISH
 - If the question requires specialized agent expertise → route to appropriate agent
 - If the question is a simple fact you know → FINISH
-- Otherwise → route to semantic_search or appropriate agent
+- Otherwise → route to semantic_search (tool) or appropriate agent
 
-Agents called so far: {', '.join(agents_called) if agents_called else 'none'}""")
+IMPORTANT: semantic_search is a TOOL/SERVICE, not an agent. Refer to it as "semantic_search tool" or "semantic_search service" in your reasoning, never as "semantic_search agent".
+
+Services/Tools called: {', '.join([s for s in agents_called if s == 'semantic_search']) if 'semantic_search' in agents_called else 'none'}
+Agents called: {', '.join([a for a in agents_called if a != 'semantic_search']) if any(a != 'semantic_search' for a in agents_called) else 'none'}""")
             ]
             
             # Use structured output for routing decision
@@ -107,8 +120,25 @@ Agents called so far: {', '.join(agents_called) if agents_called else 'none'}"""
                 except Exception as e:
                     logger.debug(f"Streaming callback error: {e}")
             
-            # If routing to FINISH, generate a response first
+            # If routing to FINISH, check if semantic_search already responded
             if decision.next == "FINISH":
+                # Check if semantic_search has already responded - if so, don't generate new response
+                has_semantic_search_response = any(
+                    r.get("service") == "semantic_search" or r.get("agent") == "semantic_search" 
+                    for r in agent_responses
+                )
+                
+                if has_semantic_search_response:
+                    # semantic_search already responded - just route to FINISH, don't generate new response
+                    # The orchestrator will extract and return the semantic_search response directly
+                    logger.debug("Routing to FINISH after semantic_search response - using existing response")
+                    return {
+                        "next": "FINISH",
+                        "current_task_instruction": "",
+                        "messages": []  # Don't add new messages, use existing semantic_search response
+                    }
+                
+                # Only generate response for simple questions that don't need semantic_search
                 # Use orchestrator prompt for responses (has introduction info), fallback to supervisor prompt
                 response_system_prompt = orchestrator_prompt if orchestrator_prompt else system_prompt
                 

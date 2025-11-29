@@ -94,7 +94,7 @@ class BaseAgent(ABC):
         # Merge: centralized defaults first, then agent overrides
         llm_config = {
             "provider": agent_llm_config.get("provider", centralized_config.get("default_provider", "gemini")),
-            "model": agent_llm_config.get("model", centralized_config.get("default_model", "gemini-1.5-flash-002")),
+            "model": agent_llm_config.get("model", centralized_config.get("default_model", "gemini-2.5-flash")),
             "temperature": agent_llm_config.get("temperature", centralized_config.get("default_temperature", 0.7)),
             "max_tokens": agent_llm_config.get("max_tokens", centralized_config.get("default_max_tokens", 2000))
         }
@@ -134,14 +134,12 @@ class BaseAgent(ABC):
             
             # Validate against allowed models list from centralized config
             allowed_models = centralized_config.get("allowed_models", [
-                "gemini-1.5-flash-002",
-                "gemini-1.5-flash",
-                "gemini-1.5-pro",
-                "gemini-1.5-pro-latest"
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
             ])
             
             if model not in allowed_models:
-                default_model = centralized_config.get("default_model", "gemini-1.5-flash-002")
+                default_model = centralized_config.get("default_model", "gemini-2.5-flash")
                 logger.warning(
                     f"Model '{model}' is not in allowed list {allowed_models}. "
                     f"Overriding to default '{default_model}'"

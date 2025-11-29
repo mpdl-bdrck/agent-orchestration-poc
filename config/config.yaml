@@ -54,19 +54,17 @@ crag:
 # LLM Configuration (Centralized - inherited by all agents)
 llm:
   # Default model for all agents (can be overridden per agent)
-  default_model: "gemini-1.5-flash-002"
+  default_model: "gemini-2.5-flash"
   default_provider: "gemini"
   default_temperature: 0.7
   default_max_tokens: 2000
   
   # Allowed models (enforced in base_agent.py)
-  # Use gemini-1.5-flash-002 for production (high RPM, better inhibition)
-  # Use gemini-1.5-pro for agents requiring highest reasoning (e.g., Guardian)
+  # Use gemini-2.5-flash for production (high RPM, good agentic reasoning)
+  # Use gemini-2.5-pro for agents requiring highest inhibition (e.g., Guardian if needed)
   allowed_models:
-    - "gemini-1.5-flash-002"
-    - "gemini-1.5-flash"
-    - "gemini-1.5-pro"
-    - "gemini-1.5-pro-latest"
+    - "gemini-2.5-flash"
+    - "gemini-2.5-pro"
 
 # Agent Configuration
 agents:

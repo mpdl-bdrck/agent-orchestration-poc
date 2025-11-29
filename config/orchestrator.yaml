@@ -7,7 +7,7 @@ version: "1.0.0"
 # LLM Configuration
 llm:
   provider: "gemini"  # Options: openai, anthropic, gemini
-  model: "gemini-1.5-flash-002"  # Inherits from config.yaml default, can override here
+  model: "gemini-2.5-flash"  # Inherits from config.yaml default, can override here
   temperature: 0.7
   max_tokens: 2000
 

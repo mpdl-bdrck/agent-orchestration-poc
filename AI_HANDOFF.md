@@ -510,11 +510,37 @@ CRITICAL USAGE RULES:
 """
 ```
 
-##### 4. Model Upgrade: gemini-1.5-flash-002
-- Switched from `gemini-2.5-flash-lite` to `gemini-1.5-flash-002`
-- Better inhibition capabilities (reduces "Tool Hallucinations")
-- Production-ready with 2000+ RPM limits (vs experimental model's 10 RPM)
-- Specifically tuned to respect "When NOT to use" instructions
+##### 4. Model Selection Strategy: gemini-2.5-flash (Standard Flash)
+
+**Critical Decision**: Standardize on `gemini-2.5-flash` (not Lite, not Pro) for ALL agents.
+
+**Why Not "All Pro"?**
+- **Rate Limit Risk**: Pro models have ~60 RPM (or even 10 RPM for previews)
+- **Parallel Execution Risk**: Orchestrator fires 4 agents simultaneously → 8-10 requests instantly
+- **Crash Risk**: Using "All Pro" risks `429 Too Many Requests` errors (same as Experimental model crash)
+- **Latency**: "All Pro" makes chat feel sluggish (3-5s waits per agent)
+
+**Why Standard Flash (Not Lite)?**
+- **Better Inhibition**: Standard Flash respects "Negative Constraints" (Don't use tools) much better than Lite
+- **Survives Load**: ~1,000 RPM limit (per dashboard) - parallel agents won't crash it
+- **Fast**: No Pro latency penalty
+- **Industry Sweet Spot**: Standard Flash is usually the industry sweet spot for Agents
+
+**Model Progression**:
+1. ❌ Experimental (`gemini-2.0-flash-exp`) → **Crash** (10 RPM rate limit)
+2. ❌ Lite (`gemini-2.5-flash-lite`) → **Stupid/Eager** (calls tools impulsively)
+3. ✅ **Standard Flash (`gemini-2.5-flash`)** → **Sweet Spot** (listens, survives, fast)
+4. 🔄 Pro (`gemini-2.5-pro`) → **Fallback** (only if Guardian still calls tools unnecessarily)
+
+**Implementation Strategy**:
+- **Start**: All agents use `gemini-2.5-flash`
+- **Monitor**: Watch Guardian behavior
+- **Escalate**: If Guardian still calls tools unnecessarily → upgrade ONLY Guardian to `gemini-2.5-pro`
+- **Don't Pay "Pro Tax"**: Don't use Pro for entire team until proven Flash can't handle it
+
+**Rate Limit Comparison** (from dashboard):
+- **Flash Models**: ~1,000 - 4,000 RPM ✅
+- **Pro/Exp Models**: Often as low as **60 RPM** (or even 10 RPM for previews) ❌
 
 ##### 5. Centralized Model Configuration
 - Added centralized LLM config in `config/config.yaml`
@@ -526,36 +552,232 @@ CRITICAL USAGE RULES:
 ```yaml
 # config/config.yaml
 llm:
-  default_model: "gemini-1.5-flash-002"
+  default_model: "gemini-2.5-flash"  # Standard Flash for all agents
   default_provider: "gemini"
   default_temperature: 0.7
   default_max_tokens: 2000
   allowed_models:
-    - "gemini-1.5-flash-002"
-    - "gemini-1.5-flash"
-    - "gemini-1.5-pro"
-    - "gemini-1.5-pro-latest"
+    - "gemini-2.5-flash"  # Standard Flash (default)
+    - "gemini-2.5-pro"    # Pro (for Guardian override if needed)
 ```
 
 **Benefits**:
 1. **Scalable**: Works with any phrasing ("Greetings", "What's up?", "Identify yourself")
 2. **AI-native**: Leverages model's reasoning ability instead of hardcoded checks
 3. **Efficient**: Prevents unnecessary database calls and latency
-4. **Production-ready**: High RPM limits for real-world usage
+4. **Production-ready**: High RPM limits (~1,000 RPM) for real-world usage
+5. **Rate Limit Safe**: Avoids Pro model's ~60 RPM bottleneck that crashes parallel execution
 
 **Files Updated**:
 - `config/prompts/guardian_agent/system.txt` - Cost framing + CoT inhibition
 - `src/agents/specialists/guardian_agent.py` - Restrictive tool description
 - `src/utils/agent_loop.py` - Reasoning visibility before tool calls
-- `config/config.yaml` - Centralized LLM configuration
+- `config/config.yaml` - Centralized LLM configuration (gemini-2.5-flash)
 - `src/core/base_agent.py` - Centralized config support
-- All agent configs - Updated to `gemini-1.5-flash-002`
+- All agent configs - Updated to `gemini-2.5-flash` (standardized)
+
+#### Critical Learning: Tool Crash Fix - Middleware Normalization (The Breakthrough)
+
+**Problem**: Guardian agent crashed with `'list' object has no attribute 'strip'` when calling tools, causing introduction text to disappear.
+
+**Root Cause Discovery**: The crash happens **BEFORE** the tool function executes. LangChain's `StructuredTool.invoke()` validates arguments via Pydantic **before** calling the function. When the LLM passes lists (e.g., `account_id: ["17"]`) instead of strings, Pydantic's internal validation calls `.strip()` on the list, causing the crash.
+
+**Why Previous Fixes Failed**:
+- ❌ **Pydantic field validators**: Run AFTER Pydantic's internal validation that calls `.strip()`
+- ❌ **Wrapper function normalization**: Runs AFTER validation fails
+- ❌ **Tool function normalization**: Runs AFTER validation fails
+- ❌ **All fixes were in the wrong layer** - they ran too late
+
+**The Breakthrough Solution**: **Middleware Normalization**
+
+Normalize tool arguments **BEFORE** they reach LangChain's validation layer. This prevents the crash by cleaning data before Pydantic sees it.
+
+**Implementation** (`src/utils/agent_loop.py`):
+
+```python
+def _normalize_tool_args(tool_args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize tool arguments to handle list inputs from eager LLMs.
+    
+    LangChain's StructuredTool validates arguments via Pydantic before calling the function.
+    When LLM passes lists (e.g., account_id: ["17"]) instead of strings, Pydantic's internal
+    validation calls .strip() on the list, causing: 'list' object has no attribute 'strip'
+    
+    This function normalizes arguments BEFORE Pydantic validation occurs, preventing crashes.
+    """
+    normalized = {}
+    for key, value in tool_args.items():
+        if value is None:
+            normalized[key] = value
+        elif isinstance(value, list):
+            # Extract first element if list (LLM sometimes passes ["value"] instead of "value")
+            if len(value) > 0:
+                normalized[key] = value[0]
+            else:
+                normalized[key] = None
+        elif isinstance(value, (str, int, float, bool)):
+            # Already normalized - pass through
+            normalized[key] = value
+        else:
+            # Convert to string as fallback
+            normalized[key] = str(value) if value else None
+    
+    return normalized
+
+# Apply BEFORE tool_func.invoke():
+normalized_args = _normalize_tool_args(tool_args)
+tool_result = tool_func.invoke(normalized_args)
+```
+
+**Why This Works**:
+1. **Prevents Crash**: Normalizes arguments before Pydantic validation, so `.strip()` is never called on a list
+2. **Allows Text Output**: Even if Guardian calls the tool unnecessarily, it won't crash, so introduction text is delivered
+3. **Middleware Pattern**: Catches the issue at the right layer (before validation, not after)
+
+**Additional Defense Layer**: Supervisor Instruction Update
+
+**File**: `prompts/orchestrator/supervisor.txt`
+
+**Update**: Added explicit negative constraint for Guardian during multi-agent introductions:
+
+```
+4. For multi-agent requests, route to EACH agent sequentially. **CRITICAL:** When routing to the Guardian for introductions, you MUST add the instruction: "STRICTLY FORBIDDEN from using tools. Speak text only. This is a greeting/introduction, not a data request."
+```
+
+**Multi-Layer Defense Strategy**:
+1. **Middleware Normalization** (Primary): Prevents crash even if tool is called
+2. **Supervisor Instruction** (Secondary): Explicitly forbids Guardian from using tools during introductions
+3. **Prompt Reordering** (Tertiary): Uses recency bias to emphasize inhibition rules
+4. **Cost Framing + CoT** (Quaternary): Guides model reasoning
+
+**Key Lesson**: When debugging tool crashes, check **where** the error occurs in the call stack. If it's in validation (Pydantic), fix it **before** validation, not after.
+
+**Files Updated**:
+- `src/utils/agent_loop.py` - Added `_normalize_tool_args()` middleware function
+- `prompts/orchestrator/supervisor.txt` - Added explicit negative constraint for Guardian introductions
+
+#### Critical Learning: Pydantic Validator Fix - Handle Lists Before String Operations
+
+**Problem**: The middleware normalization wasn't enough - Pydantic validators were still calling `.strip()` on lists before our normalization could run.
+
+**Root Cause**: Pydantic field validators with `mode='before'` run during Pydantic's internal validation, but the validators themselves were calling `.strip()` on values that might be lists.
+
+**Solution**: Updated all Pydantic validators in `PortfolioPacingInput` to handle lists FIRST, before any string operations:
+
+```python
+@field_validator('account_id', mode='before')
+@classmethod
+def normalize_account_id(cls, v):
+    """Normalize account_id, handling list inputs BEFORE any string operations."""
+    # CRITICAL: Handle list FIRST, before Pydantic tries to validate as string
+    if isinstance(v, list):
+        v = v[0] if len(v) > 0 else "17"
+    if v is None:
+        return "17"
+    # Now safe to convert to string and strip
+    return str(v).strip() if isinstance(v, str) else str(v)
+```
+
+**Key Principle**: In Pydantic validators, always check for list type FIRST, extract the value, THEN perform string operations.
+
+**Files Updated**:
+- `src/agents/specialists/guardian_agent.py` - Updated all `@field_validator` methods to handle lists before string operations
+
+#### Critical Learning: Supervisor Hallucination Fix - Don't Generate New Responses When Tool Already Responded
+
+**Problem**: When semantic_search tool responded, supervisor would route to FINISH and generate a NEW hallucinated response instead of using the tool's results.
+
+**Root Cause**: Supervisor's FINISH routing logic always generated a new response, even when semantic_search had already provided results.
+
+**Solution**: Check if semantic_search has already responded before generating FINISH response:
+
+```python
+if decision.next == "FINISH":
+    # Check if semantic_search has already responded - if so, don't generate new response
+    has_semantic_search_response = any(
+        r.get("service") == "semantic_search" or r.get("agent") == "semantic_search" 
+        for r in agent_responses
+    )
+    
+    if has_semantic_search_response:
+        # semantic_search already responded - just route to FINISH, don't generate new response
+        return {
+            "next": "FINISH",
+            "current_task_instruction": "",
+            "messages": []  # Don't add new messages, use existing semantic_search response
+        }
+```
+
+**Key Principle**: When a tool/service has already provided results, don't generate new responses - let the orchestrator extract and use the tool's results.
+
+**Files Updated**:
+- `src/agents/orchestrator/graph/supervisor.py` - Added check to skip response generation when semantic_search already responded
+
+#### Critical Learning: Semantic Search Terminology - Tool/Service, Not Agent
+
+**Problem**: Supervisor was referring to semantic_search as "semantic_search agent" in reasoning, causing confusion.
+
+**Root Cause**: Supervisor prompt and context building didn't distinguish between agents and tools/services, so LLM inferred "agent" terminology.
+
+**Solution**: Explicitly clarify in prompts and context that semantic_search is a TOOL/SERVICE:
+
+1. **Supervisor Prompt**: Added `**TOOL**` label and explicit note "(NOT an agent - it's a search tool/service)"
+2. **Context Building**: Distinguish in response history: `"- semantic_search (tool): ..."` vs `"- {agent_name} (agent): ..."`
+3. **Routing Prompt**: Added explicit instruction: "semantic_search is a TOOL/SERVICE, not an agent. Refer to it as 'semantic_search tool' or 'semantic_search service' in your reasoning, never as 'semantic_search agent'."
+4. **Status Display**: Separated "Services/Tools called" from "Agents called"
+
+**Key Principle**: Be explicit about terminology in prompts. If something is a tool/service, label it clearly to prevent LLM from inferring incorrect terminology.
+
+**Files Updated**:
+- `prompts/orchestrator/supervisor.txt` - Added TOOL/AGENT labels and terminology clarification
+- `src/agents/orchestrator/graph/supervisor.py` - Updated context building and routing prompts to distinguish tools from agents
+
+#### Critical Learning: Tool Calling Visibility - Restore User Transparency
+
+**Problem**: Tool calls were not visible to users, reducing transparency.
+
+**Root Cause**: Guardian agent was passing `streaming_callback=None` to `execute_agent_loop`, and semantic_search wasn't emitting tool_call events.
+
+**Solution**: 
+1. Enable streaming callback in Guardian agent for tool calls
+2. Emit `tool_call` events from semantic_search node
+3. Display tool calls and results in CLI
+
+**Files Updated**:
+- `src/agents/specialists/guardian_agent.py` - Enabled streaming callback for tool calls
+- `src/agents/orchestrator/graph/nodes/semantic_search.py` - Added tool_call event emission
+- `src/interface/cli/main.py` - Added handlers for tool_call and tool_result events
 
 #### Key Lesson: "Lite" Models Need Inhibition Training
 
 "Lite" models prioritize speed over accuracy. They act like eager interns - seeing a tool and clicking it immediately without thinking "is this actually necessary?"
 
 Solution: **Cost Framing** + **CoT Inhibition** + **Better Model** creates a "thoughtful intern" that considers efficiency and requirements before acting.
+
+#### Key Lesson: Model Selection Strategy - Standard Flash First
+
+**The Rate Limit Wall**: Using `gemini-2.5-pro` for everything comes with massive risk.
+
+**The Problem**:
+- Flash Models: ~1,000 - 4,000 RPM (Requests Per Minute)
+- Pro/Exp Models: Often as low as **60 RPM** (or even 10 RPM for previews)
+- Orchestrator fires 4 agents simultaneously → 8-10 requests instantly
+- "All Pro" risks crashing with `429 Too Many Requests` (same as Experimental crash)
+
+**The Solution**: Standardize on `gemini-2.5-flash` first.
+
+**Why Standard Flash (Not Lite, Not Pro)?**
+1. **vs. Lite**: Standard Flash has better reasoning inhibition - stops Guardian from aggressively calling tools during intros
+2. **vs. Pro**: Need the 1,000 RPM quota to support parallel agent execution without crashing
+3. **Industry Sweet Spot**: Standard Flash is the industry sweet spot for Agents
+
+**Escalation Path**:
+1. ✅ **Start**: All agents use `gemini-2.5-flash`
+2. 👀 **Monitor**: Watch Guardian behavior
+3. 🔄 **Escalate**: If Guardian still calls tools unnecessarily → upgrade ONLY Guardian to `gemini-2.5-pro`
+4. ❌ **Don't Pay "Pro Tax"**: Don't use Pro for entire team until proven Flash can't handle it
+
+**Key Principle**: Don't pay the "Pro Tax" (latency/quota) for the whole team until you prove Flash can't handle it.
 
 ---
 
@@ -591,6 +813,64 @@ Solution: **Cost Framing** + **CoT Inhibition** + **Better Model** creates a "th
 
 **Implementation**: All decisions come from LLM reasoning guided by prompts.
 
+### Decision 6: Model Selection Strategy - Standard Flash First
+
+**Rationale**: Rate limits are critical for parallel agent execution. Pro models have ~60 RPM vs Flash's ~1,000 RPM. Using "All Pro" risks crashes.
+
+**Implementation**: 
+- Standardize on `gemini-2.5-flash` for all agents
+- Monitor Guardian behavior
+- Only escalate Guardian to `gemini-2.5-pro` if Flash proves insufficient
+- Don't pay "Pro Tax" (latency/quota) for entire team until proven necessary
+
+**Rate Limit Reality**:
+- Flash Models: ~1,000 - 4,000 RPM ✅
+- Pro Models: ~60 RPM (or 10 RPM for previews) ❌
+- Parallel execution (4 agents × 2 calls) = 8-10 requests instantly
+
+### Decision 7: Middleware Normalization for Tool Arguments
+
+**Rationale**: Tool crashes happen in LangChain's validation layer BEFORE function execution. Pydantic validates arguments and calls `.strip()` on lists, causing crashes. Fix must be at middleware layer, not inside functions.
+
+**Implementation**: 
+- Add `_normalize_tool_args()` function in `src/utils/agent_loop.py`
+- Normalize arguments BEFORE `tool_func.invoke()` (before Pydantic validation)
+- Extract lists to first element, handle None values, pass through primitives
+- **CRITICAL**: Also fix Pydantic validators to handle lists BEFORE string operations
+- Prevents `'list' object has no attribute 'strip'` crashes
+
+**Key Principle**: When debugging tool crashes, check WHERE the error occurs in the call stack. If it's in validation (Pydantic), fix it BEFORE validation, not after. Also ensure Pydantic validators handle lists before string operations.
+
+**Multi-Layer Defense**:
+1. **Pydantic Validators** (Primary) - Handle lists before string operations
+2. **Middleware Normalization** (Secondary) - Normalize before invoke
+3. **Supervisor Instruction** (Tertiary) - Explicitly forbids tool usage
+4. **Prompt Reordering** (Quaternary) - Uses recency bias
+5. **Cost Framing + CoT** (Quinary) - Guides reasoning
+
+### Decision 8: Supervisor Should Not Generate Responses When Tools Already Responded
+
+**Rationale**: When semantic_search tool responds, supervisor should route to FINISH without generating a new hallucinated response. The orchestrator will extract and use the tool's results.
+
+**Implementation**: 
+- Check if semantic_search has already responded before generating FINISH response
+- If tool responded, just route to FINISH without adding new messages
+- Prevents hallucinated responses when tools have already provided results
+
+**Key Principle**: When a tool/service has already provided results, don't generate new responses - let the orchestrator extract and use the tool's results.
+
+### Decision 9: Explicit Terminology - Tools vs Agents
+
+**Rationale**: LLMs infer terminology from context. If semantic_search is listed alongside agents without clarification, LLM will call it an "agent". Be explicit about what is a tool/service vs an agent.
+
+**Implementation**: 
+- Label semantic_search as `**TOOL**` in supervisor prompt
+- Distinguish tools from agents in context building: `"- semantic_search (tool): ..."` vs `"- {agent_name} (agent): ..."`
+- Add explicit instruction: "semantic_search is a TOOL/SERVICE, not an agent"
+- Separate "Services/Tools called" from "Agents called" in status display
+
+**Key Principle**: Be explicit about terminology in prompts. If something is a tool/service, label it clearly to prevent LLM from inferring incorrect terminology.
+
 ---
 
 ## Consultant Guidance Summary
@@ -618,6 +898,7 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 3. **State-Based**: Read from `AgentState`, don't prop-drill
 4. **Structured Output**: Use Pydantic models for routing decisions
 5. **Prompt Engineering**: Guide LLM behavior through prompts
+6. **Middleware Normalization**: Normalize tool arguments BEFORE Pydantic validation (in `agent_loop.py`)
 
 ---
 
@@ -647,6 +928,8 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 - Guardian node: `src/agents/orchestrator/graph/nodes/guardian.py`
 - State schema: `src/agents/orchestrator/graph/state.py`
 - Graph definition: `src/agents/orchestrator/graph/graph.py`
+- Agent loop: `src/utils/agent_loop.py` - **Middleware normalization for tool arguments**
+- Supervisor prompt: `prompts/orchestrator/supervisor.txt` - **Multi-agent routing rules**
 
 ### Key Patterns
 
@@ -654,6 +937,7 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 - **Instructions**: XML tags (`<supervisor_instruction>`) in agent prompts
 - **Tool Usage**: "WHEN NOT TO USE" in tool descriptions
 - **State Access**: Read from `AgentState` in nodes
+- **Tool Argument Normalization**: `_normalize_tool_args()` in `agent_loop.py` - **Prevents Pydantic validation crashes**
 
 ### Anti-Patterns
 
@@ -662,6 +946,7 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 - ❌ Special-casing edge cases
 - ❌ Prop-drilling parameters
 - ❌ Ignoring supervisor instructions
+- ❌ Adding defensive code INSIDE tool functions for validation errors (fix at middleware layer instead)
 
 ---
 
@@ -680,6 +965,46 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 4. **Restrictive descriptions** (strict usage rules)
 
 This prevents unnecessary tool calls while maintaining scalability.
+
+### Final Lesson: Model Selection Strategy - Standard Flash First
+
+**The Rate Limit Wall**: Don't use "All Pro" - it crashes parallel execution.
+
+**Key Principle**: Standardize on `gemini-2.5-flash` first. Only escalate Guardian to Pro if Flash proves insufficient.
+
+**Why**:
+- Flash: ~1,000 - 4,000 RPM ✅ (survives parallel execution)
+- Pro: ~60 RPM ❌ (crashes with 4 agents × 2 calls = 8-10 requests instantly)
+
+**Escalation Path**:
+1. Start with `gemini-2.5-flash` for all agents
+2. Monitor Guardian behavior
+3. If Guardian still calls tools unnecessarily → upgrade ONLY Guardian to `gemini-2.5-pro`
+4. Don't pay "Pro Tax" (latency/quota) for entire team until proven necessary
+
+### Final Lesson: Tool Crash Fix - Middleware Normalization
+
+**The Breakthrough**: Tool crashes happen **before** function execution, not during.
+
+**Key Principle**: Fix validation errors at the **middleware layer**, not inside the function.
+
+**Why Previous Fixes Failed**:
+- Pydantic validates arguments BEFORE calling the function
+- Adding defensive code INSIDE the function is too late
+- The crash happens in LangChain's validation layer
+
+**The Solution**: Normalize arguments **BEFORE** `tool_func.invoke()` in `agent_loop.py`:
+- Extract lists to their first element
+- Handle None values gracefully
+- Pass through already-normalized values
+
+**Impact**: Even if Guardian calls tools unnecessarily, it won't crash, and introduction text will be delivered.
+
+**Multi-Layer Defense**:
+1. **Middleware Normalization** (Primary) - Prevents crash
+2. **Supervisor Instruction** (Secondary) - Explicitly forbids tool usage
+3. **Prompt Reordering** (Tertiary) - Uses recency bias
+4. **Cost Framing + CoT** (Quaternary) - Guides reasoning
 
 ---
 

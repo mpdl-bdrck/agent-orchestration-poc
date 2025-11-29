@@ -87,11 +87,11 @@ class CRAGValidator:
                         global_config = yaml.safe_load(f)
                         centralized_llm = global_config.get("llm", {})
                         # Use default model from centralized config
-                        model = centralized_llm.get("default_model", "gemini-1.5-flash-002")
+                        model = centralized_llm.get("default_model", "gemini-2.5-flash")
                 else:
-                    model = "gemini-1.5-flash-002"
+                    model = "gemini-2.5-flash"
             except Exception:
-                model = "gemini-1.5-flash-002"
+                model = "gemini-2.5-flash"
             
             return ChatGoogleGenerativeAI(
                 model=model,

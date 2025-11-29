@@ -138,7 +138,10 @@ def execute_agent_loop(
                         logger.debug(f"Failed to load execution instructions: {e}")
                     
                     try:
-                        tool_result = tool_func.invoke(tool_args)
+                        # Normalize tool arguments BEFORE invoking to prevent Pydantic validation crashes
+                        # LangChain's StructuredTool validates via Pydantic, which crashes if LLM passes lists
+                        normalized_args = _normalize_tool_args(tool_args)
+                        tool_result = tool_func.invoke(normalized_args)
                         tool_calls.append({
                             "tool": tool_name,
                             "args": tool_args,
@@ -211,6 +214,42 @@ def execute_agent_loop(
         "tool_calls": tool_calls,
         "tool_results_data": tool_results_data
     }
+
+
+def _normalize_tool_args(tool_args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize tool arguments to handle list inputs from eager LLMs.
+    
+    LangChain's StructuredTool validates arguments via Pydantic before calling the function.
+    When LLM passes lists (e.g., account_id: ["17"]) instead of strings, Pydantic's internal
+    validation calls .strip() on the list, causing: 'list' object has no attribute 'strip'
+    
+    This function normalizes arguments BEFORE Pydantic validation occurs, preventing crashes.
+    
+    Args:
+        tool_args: Dictionary of tool arguments (may contain lists)
+        
+    Returns:
+        Normalized dictionary with lists converted to their first element
+    """
+    normalized = {}
+    for key, value in tool_args.items():
+        if value is None:
+            normalized[key] = value
+        elif isinstance(value, list):
+            # Extract first element if list (LLM sometimes passes ["value"] instead of "value")
+            if len(value) > 0:
+                normalized[key] = value[0]
+            else:
+                normalized[key] = None
+        elif isinstance(value, (str, int, float, bool)):
+            # Already normalized - pass through
+            normalized[key] = value
+        else:
+            # Convert to string as fallback
+            normalized[key] = str(value) if value else None
+    
+    return normalized
 
 
 def _extract_tool_call_info(tool_call: Any, job_name: str) -> tuple[str, dict[str, Any], str]:
