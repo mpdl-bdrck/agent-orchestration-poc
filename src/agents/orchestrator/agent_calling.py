@@ -18,7 +18,8 @@ def call_specialist_agent(
     context_id: str,
     embedding_model,
     agent_registry_get_agent,
-    conversation_history: Optional[List[Dict]] = None
+    conversation_history: Optional[List[Dict]] = None,
+    supervisor_instruction: Optional[str] = None
 ) -> Optional[str]:
     """
     Call a specialist agent for Q&A analysis.
@@ -122,7 +123,17 @@ def call_specialist_agent(
             logger.info(f"Agent {agent_name} has no tools - using simulated data")
 
         # Call agent's analyze() method (which supports tool calling)
-        result = agent.analyze(question, context)
+        # Pass supervisor instruction if available (for Guardian agent to follow supervisor guidance)
+        if hasattr(agent, 'analyze'):
+            # Check if analyze accepts supervisor_instruction parameter
+            import inspect
+            sig = inspect.signature(agent.analyze)
+            if 'supervisor_instruction' in sig.parameters:
+                result = agent.analyze(question, context, supervisor_instruction=supervisor_instruction)
+            else:
+                result = agent.analyze(question, context)
+        else:
+            result = agent.analyze(question, context)
         
         # Extract answer from result
         if isinstance(result, dict):

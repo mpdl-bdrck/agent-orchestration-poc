@@ -71,15 +71,16 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
                 agent.set_streaming_callback(guardian_streaming_wrapper)
             
             # Call existing agent logic
-            # Pass original question so Guardian can detect keywords for direct tool call
-            # Also pass instruction in context so Guardian understands the task
+            # Read supervisor instruction from state and pass it to the agent
+            # This allows the Guardian to follow supervisor guidance and avoid unnecessary tool calls
             response = call_specialist_agent_func(
                 agent_name="guardian",
-                question=question_for_guardian,  # Pass original question for keyword detection
+                question=question_for_guardian,  # Pass original question for context
                 context_id=context_id,
                 embedding_model=embedding_model,
                 agent_registry_get_agent=get_agent_func,
-                conversation_history=conversation_history if conversation_history else None
+                conversation_history=conversation_history if conversation_history else None,
+                supervisor_instruction=instruction  # Pass supervisor instruction from state
             )
             
             if not response:

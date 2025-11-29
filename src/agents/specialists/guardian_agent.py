@@ -56,9 +56,23 @@ class GuardianAgent(BaseSpecialistAgent):
         self.streaming_callback = None  # Callback for streaming events
         self._toolkit_reference = None  # Cache for toolkit reference
     
-    def _get_system_prompt(self) -> str:
-        """Get system prompt with toolkit reference."""
+    def _get_system_prompt(self, supervisor_instruction: str = None) -> str:
+        """Get system prompt with toolkit reference and optional supervisor instruction."""
         base_prompt = self.config.prompts.get('system', '')
+        
+        # Inject supervisor instruction using XML tags for better LLM attention
+        if supervisor_instruction:
+            base_prompt += f"""
+
+<supervisor_instruction>
+{supervisor_instruction}
+</supervisor_instruction>
+
+CRITICAL: The text above is a direct order from the Orchestrator Supervisor. 
+Follow the Supervisor's instruction exactly. If the instruction implies a greeting, introduction, 
+or general question that doesn't require portfolio data, reply with text only. Do NOT call tools 
+unless portfolio data is explicitly needed for the response.
+"""
         
         # Build toolkit reference from available tools
         if self.tools and not self._toolkit_reference:
@@ -136,6 +150,18 @@ class GuardianAgent(BaseSpecialistAgent):
                     name="analyze_portfolio_pacing",
                     description="""Analyze portfolio pacing and generate dashboard-style insights.
                     
+                    WHEN TO USE:
+                    - User explicitly asks for portfolio data, numbers, health status, or pacing
+                    - User asks about budget utilization, spending trends, or campaign performance
+                    - User requests specific portfolio metrics or analysis that requires real data
+                    
+                    WHEN NOT TO USE:
+                    - DO NOT use for general conversation, introductions, or greetings
+                    - DO NOT use when asked "who are you?", "introduce yourself", or role explanations
+                    - DO NOT use if the user has not provided a specific portfolio context or focus
+                    - DO NOT use for questions that don't require portfolio data analysis
+                    - DO NOT use for simple informational questions that can be answered from your knowledge
+                    
                     This tool provides comprehensive portfolio oversight including:
                     - Campaign Portfolio Timeline (start/end dates, days passed/left)
                     - Budget Status (portfolio budget, spent, should have spent, remaining)
@@ -145,12 +171,6 @@ class GuardianAgent(BaseSpecialistAgent):
                     Default values:
                     - account_id: "17" (Tricoast Media LLC)
                     - advertiser_filter: None (all advertisers) or "Lilly" if user mentions Eli Lilly
-                    
-                    Use this tool when asked about:
-                    - Portfolio health or status
-                    - Budget utilization and pacing
-                    - Campaign performance overview
-                    - Spending trends and projections
                     
                     Always use account_id="17" unless user specifies a different account.
                     If user mentions "Eli Lilly" or "Lilly", use advertiser_filter="Lilly".
@@ -202,7 +222,7 @@ class GuardianAgent(BaseSpecialistAgent):
             })
 
     @trace_agent("guardian")
-    def analyze(self, question: str, context: str) -> Dict[str, Any]:
+    def analyze(self, question: str, context: str, supervisor_instruction: str = None) -> Dict[str, Any]:
         """
         Perform Guardian analysis on a question with provided context.
 
@@ -212,55 +232,11 @@ class GuardianAgent(BaseSpecialistAgent):
         Args:
             question: The question to analyze
             context: Relevant context from knowledge base
+            supervisor_instruction: Optional instruction from supervisor (read from AgentState)
 
         Returns:
             Analysis result dictionary
         """
-
-        # Check if this is a portfolio health/status question - if so, call tool directly
-        question_lower = question.lower()
-        portfolio_keywords = ['portfolio', 'health', 'status', 'budget', 'spend', 'pacing', 'lilly', 'eli lilly']
-        if any(keyword in question_lower for keyword in portfolio_keywords):
-            try:
-                result = self._analyze_portfolio_pacing(
-                    account_id=None,  # Will use hardcoded defaults
-                    advertiser_filter=None,
-                    campaign_start=None,
-                    campaign_end=None,
-                    campaign_budget=None
-                )
-                
-                # Check if result is a JSON error - if so, parse it and extract user message
-                if isinstance(result, str):
-                    try:
-                        import json as json_module
-                        error_data = json_module.loads(result)
-                        if error_data.get('status') == 'error':
-                            # Extract user-friendly message from error JSON
-                            user_message = error_data.get('user_message') or error_data.get('message', 'An error occurred while analyzing the portfolio.')
-                            logger.warning(f"Portfolio tool returned error: {error_data.get('error')}")
-                            # Return user-friendly error message, but still fall through to normal analysis
-                            # so the agent can provide context-aware response
-                            return {
-                                'answer': user_message,
-                                'specialist_type': self.specialist_type,
-                                'question': question,
-                                'tool_calls': [{'tool': 'analyze_portfolio_pacing', 'result': result, 'error': True}]
-                            }
-                    except (ValueError, AttributeError) as e:
-                        # Not JSON or not an error - proceed normally
-                        logger.debug(f"Result is not JSON error: {e}")
-                        pass
-                
-                return {
-                    'answer': result,
-                    'specialist_type': self.specialist_type,
-                    'question': question,
-                    'tool_calls': [{'tool': 'analyze_portfolio_pacing', 'result': result}]
-                }
-            except Exception as e:
-                logger.error(f"Direct tool call failed: {e}", exc_info=True)
-                # Fall back to normal analysis
 
         # Extract account info from question
         account_info = self._extract_account_info(question)
@@ -288,7 +264,7 @@ When calling analyze_portfolio_pacing, use these defaults unless the user specif
                 self._emit_streaming_event("status", f"Using {len(self.tools)} tool(s) for analysis")
                 
                 # Build messages
-                system_prompt = self._get_system_prompt()
+                system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
                 user_prompt = self._build_user_prompt(question, enhanced_context)
 
                 
