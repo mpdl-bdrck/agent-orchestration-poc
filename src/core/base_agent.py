@@ -70,9 +70,35 @@ class BaseAgent(ABC):
                 raise e
         return self._llm
 
+    def _get_centralized_llm_config(self) -> Dict[str, Any]:
+        """Load centralized LLM configuration from config.yaml."""
+        try:
+            config_path = Path("config/config.yaml")
+            if config_path.exists():
+                import yaml
+                with open(config_path) as f:
+                    global_config = yaml.safe_load(f)
+                    return global_config.get("llm", {})
+        except Exception as e:
+            logger.debug(f"Could not load centralized LLM config: {e}")
+        return {}
+    
     def _create_llm(self):
-        """Create LLM from config."""
-        llm_config = self.config.llm_config
+        """Create LLM from config with centralized defaults and agent-level overrides."""
+        # Load centralized defaults
+        centralized_config = self._get_centralized_llm_config()
+        
+        # Agent-level config (can override centralized defaults)
+        agent_llm_config = self.config.llm_config
+        
+        # Merge: centralized defaults first, then agent overrides
+        llm_config = {
+            "provider": agent_llm_config.get("provider", centralized_config.get("default_provider", "gemini")),
+            "model": agent_llm_config.get("model", centralized_config.get("default_model", "gemini-1.5-flash-002")),
+            "temperature": agent_llm_config.get("temperature", centralized_config.get("default_temperature", 0.7)),
+            "max_tokens": agent_llm_config.get("max_tokens", centralized_config.get("default_max_tokens", 2000))
+        }
+        
         provider = llm_config["provider"]
 
         if provider == "openai":
@@ -83,8 +109,8 @@ class BaseAgent(ABC):
                 raise ValueError("OPENAI_API_KEY environment variable not set")
             return ChatOpenAI(
                 model=llm_config["model"],
-                temperature=llm_config.get("temperature", 0.7),
-                max_tokens=llm_config.get("max_tokens", 2000)
+                temperature=llm_config["temperature"],
+                max_tokens=llm_config["max_tokens"]
             )
         elif provider == "anthropic":
             if ChatAnthropic is None:
@@ -94,8 +120,8 @@ class BaseAgent(ABC):
                 raise ValueError("ANTHROPIC_API_KEY environment variable not set")
             return ChatAnthropic(
                 model=llm_config["model"],
-                temperature=llm_config.get("temperature", 0.7),
-                max_tokens=llm_config.get("max_tokens", 2000)
+                temperature=llm_config["temperature"],
+                max_tokens=llm_config["max_tokens"]
             )
         elif provider == "gemini":
             # Explicitly pass API key to avoid Google Cloud SDK auth fallback
@@ -103,16 +129,29 @@ class BaseAgent(ABC):
             if not api_key:
                 raise ValueError("GEMINI_API_KEY environment variable not set")
             
-            # Enforce gemini-2.5-flash-lite as the only allowed model
-            model = llm_config.get("model", "gemini-2.5-flash-lite")
-            if model != "gemini-2.5-flash-lite":
-                logger.warning(f"Model '{model}' is not allowed. Overriding to 'gemini-2.5-flash-lite'")
-                model = "gemini-2.5-flash-lite"
+            # Get model from merged config
+            model = llm_config["model"]
+            
+            # Validate against allowed models list from centralized config
+            allowed_models = centralized_config.get("allowed_models", [
+                "gemini-1.5-flash-002",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-1.5-pro-latest"
+            ])
+            
+            if model not in allowed_models:
+                default_model = centralized_config.get("default_model", "gemini-1.5-flash-002")
+                logger.warning(
+                    f"Model '{model}' is not in allowed list {allowed_models}. "
+                    f"Overriding to default '{default_model}'"
+                )
+                model = default_model
             
             return ChatGoogleGenerativeAI(
                 model=model,
-                temperature=llm_config.get("temperature", 0.7),
-                max_tokens=llm_config.get("max_tokens", 2000),
+                temperature=llm_config["temperature"],
+                max_tokens=llm_config["max_tokens"],
                 google_api_key=api_key
             )
         else:

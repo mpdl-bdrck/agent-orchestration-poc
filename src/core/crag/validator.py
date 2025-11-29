@@ -76,8 +76,25 @@ class CRAGValidator:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError("GEMINI_API_KEY environment variable not set")
+            
+            # Load centralized model config (CRAG validator uses faster model for grading)
+            try:
+                import yaml
+                from pathlib import Path
+                config_path = Path("config/config.yaml")
+                if config_path.exists():
+                    with open(config_path) as f:
+                        global_config = yaml.safe_load(f)
+                        centralized_llm = global_config.get("llm", {})
+                        # Use default model from centralized config
+                        model = centralized_llm.get("default_model", "gemini-1.5-flash-002")
+                else:
+                    model = "gemini-1.5-flash-002"
+            except Exception:
+                model = "gemini-1.5-flash-002"
+            
             return ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash-lite",
+                model=model,
                 temperature=0.1,
                 max_tokens=500,
                 google_api_key=api_key
@@ -100,37 +117,7 @@ class CRAGValidator:
                 "version": "1.0",
                 "llm": {
                     "provider": "gemini",
-                    "model": "gemini-2.5-flash-lite",  # Use base model for grading
-                    "temperature": 0.1,  # Low temperature for consistent grading
-                    "max_tokens": 500
-                },
-                "prompts": {
-                    "system": "crag_grader_system.txt",
-                    "user": "crag_grader_user.txt"
-                }
-            }
-
-            with open(config_path, 'w') as f:
-                yaml.dump(default_config, f, default_flow_style=False)
-
-            logger.info(f"Created default CRAG validator config: {config_path}")
-
-    def _ensure_config_exists(self, config_path: str):
-        """Create default CRAG validator config if it doesn't exist."""
-        import yaml
-
-        config_dir = Path(config_path).parent
-        config_dir.mkdir(parents=True, exist_ok=True)
-
-        if not Path(config_path).exists():
-            default_config = {
-                "agent_id": "crag_validator",
-                "agent_name": "CRAG Validator",
-                "agent_type": "validator",
-                "version": "1.0",
-                "llm": {
-                    "provider": "gemini",
-                    "model": "gemini-2.5-flash-lite",  # Use base model for grading
+                    "model": "gemini-1.5-flash-002",  # Use centralized default model for grading
                     "temperature": 0.1,  # Low temperature for consistent grading
                     "max_tokens": 500
                 },
