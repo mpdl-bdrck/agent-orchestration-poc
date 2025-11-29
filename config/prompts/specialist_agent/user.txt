@@ -1,0 +1,7 @@
+Question: {question}
+
+Knowledge Base Context:
+{context}
+
+Analyze this question from an issue resolution perspective. Focus on diagnosing problems, identifying root causes, and providing actionable solutions. Provide detailed troubleshooting guidance based on the knowledge base context.
+

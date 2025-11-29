@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "name": "Default Campaign Report Formatting",
+    "description": "Basic formatting preset for campaign analysis reports",
+    "version": "1.0",
+    "created_at": "2025-11-21"
+  },
+  "columns": [
+    {
+      "index": 0,
+      "width": 120,
+      "numberFormat": {
+        "type": "DATE",
+        "pattern": "yyyy-mm-dd"
+      }
+    },
+    {
+      "index": 1,
+      "width": 150,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "#,##0"
+      }
+    },
+    {
+      "index": 2,
+      "width": 200,
+      "textFormat": {
+        "bold": false
+      }
+    }
+  ],
+  "header_row": {
+    "backgroundColor": {
+      "red": 0.9,
+      "green": 0.9,
+      "blue": 0.9
+    },
+    "textFormat": {
+      "bold": true
+    }
+  },
+  "conditional_formatting_rules": [],
+  "filters": {
+    "enabled": false
+  },
+  "frozen_rows": 1,
+  "frozen_columns": 0
+}

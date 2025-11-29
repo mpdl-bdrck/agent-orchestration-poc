@@ -1,0 +1,5 @@
+google-auth==2.16.0
+google-api-python-client==2.70.0
+pandas==2.0.3
+pytz==2023.3
+

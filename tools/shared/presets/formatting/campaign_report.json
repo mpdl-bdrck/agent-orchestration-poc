@@ -1,0 +1,240 @@
+{
+  "metadata": {
+    "name": "Campaign Report Professional Formatting",
+    "description": "Professional formatting preset for campaign performance reports with proper number formats, headers, and conditional formatting",
+    "version": "1.0",
+    "created_at": "2025-11-21",
+    "data_formatting_included": true,
+    "data_cells_formatted": 0
+  },
+  "columns": [
+    {
+      "index": 0,
+      "width": 120,
+      "hidden": false,
+      "numberFormat": {
+        "type": "DATE",
+        "pattern": "yyyy-mm-dd"
+      }
+    },
+    {
+      "index": 1,
+      "width": 150,
+      "hidden": false,
+      "textFormat": {
+        "bold": false
+      }
+    },
+    {
+      "index": 2,
+      "width": 200,
+      "hidden": false,
+      "textFormat": {
+        "bold": false
+      }
+    },
+    {
+      "index": 3,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "#,##0"
+      }
+    },
+    {
+      "index": 4,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "#,##0"
+      }
+    },
+    {
+      "index": 5,
+      "width": 120,
+      "hidden": false,
+      "numberFormat": {
+        "type": "CURRENCY",
+        "pattern": "$#,##0.00"
+      }
+    },
+    {
+      "index": 6,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "PERCENT",
+        "pattern": "0.00%"
+      }
+    },
+    {
+      "index": 7,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "0.00"
+      }
+    },
+    {
+      "index": 8,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "0.00"
+      }
+    },
+    {
+      "index": 9,
+      "width": 100,
+      "hidden": false,
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "#,##0"
+      }
+    }
+  ],
+  "header_row": {
+    "backgroundColor": {
+      "red": 0.2,
+      "green": 0.4,
+      "blue": 0.6
+    },
+    "textFormat": {
+      "foregroundColor": {
+        "red": 1.0,
+        "green": 1.0,
+        "blue": 1.0
+      },
+      "bold": true,
+      "fontSize": 11
+    },
+    "horizontalAlignment": "CENTER",
+    "verticalAlignment": "MIDDLE"
+  },
+  "data_formatting": {
+    "A2:A1000": {
+      "numberFormat": {
+        "type": "DATE",
+        "pattern": "yyyy-mm-dd"
+      }
+    },
+    "D2:E1000": {
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "#,##0"
+      }
+    },
+    "F2:F1000": {
+      "numberFormat": {
+        "type": "CURRENCY",
+        "pattern": "$#,##0.00"
+      }
+    },
+    "G2:G1000": {
+      "numberFormat": {
+        "type": "PERCENT",
+        "pattern": "0.00%"
+      }
+    },
+    "H2:I1000": {
+      "numberFormat": {
+        "type": "NUMBER",
+        "pattern": "0.00"
+      }
+    }
+  },
+  "conditional_formatting_rules": [
+    {
+      "ranges": [
+        {
+          "startRowIndex": 1,
+          "endRowIndex": 1000,
+          "startColumnIndex": 6,
+          "endColumnIndex": 7
+        }
+      ],
+      "booleanRule": {
+        "condition": {
+          "type": "NUMBER_GREATER",
+          "values": [
+            {
+              "userEnteredValue": "1"
+            }
+          ]
+        },
+        "format": {
+          "backgroundColor": {
+            "red": 1.0,
+            "green": 0.8,
+            "blue": 0.8
+          },
+          "textFormat": {
+            "foregroundColor": {
+              "red": 0.6,
+              "green": 0.0,
+              "blue": 0.0
+            },
+            "bold": true
+          }
+        }
+      }
+    },
+    {
+      "ranges": [
+        {
+          "startRowIndex": 1,
+          "endRowIndex": 1000,
+          "startColumnIndex": 7,
+          "endColumnIndex": 8
+        }
+      ],
+      "booleanRule": {
+        "condition": {
+          "type": "NUMBER_GREATER",
+          "values": [
+            {
+              "userEnteredValue": "2"
+            }
+          ]
+        },
+        "format": {
+          "backgroundColor": {
+            "red": 0.8,
+            "green": 1.0,
+            "blue": 0.8
+          },
+          "textFormat": {
+            "foregroundColor": {
+              "red": 0.0,
+              "green": 0.6,
+              "blue": 0.0
+            }
+          }
+        }
+      }
+    }
+  ],
+  "filters": {
+    "enabled": true,
+    "range": {
+      "startRowIndex": 0,
+      "endRowIndex": 1,
+      "startColumnIndex": 0,
+      "endColumnIndex": 10
+    }
+  },
+  "frozen_rows": 1,
+  "frozen_columns": 0,
+  "sheet_properties": {
+    "title": "",
+    "sheetType": "GRID",
+    "gridProperties": {
+      "rowCount": 1000,
+      "columnCount": 26
+    }
+  }
+}

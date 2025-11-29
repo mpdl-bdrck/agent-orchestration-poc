@@ -1,0 +1,13 @@
+# Analysis Tools Dependencies
+
+# HTTP requests (BidSwitch API)
+requests>=2.25.0
+
+# Database connectivity
+psycopg2-binary>=2.9.0  # PostgreSQL
+boto3>=1.26.0           # AWS services (Redshift)
+
+# Utilities
+python-dateutil>=2.8.0
+PyYAML>=5.4.0
+pandas>=2.3.0

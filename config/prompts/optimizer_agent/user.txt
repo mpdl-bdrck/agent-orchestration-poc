@@ -1,0 +1,7 @@
+Question: {question}
+
+Knowledge Base Context:
+{context}
+
+Analyze this question from a performance optimization perspective. Focus on budget management, bid optimization, and performance improvement strategies. Provide actionable recommendations to optimize campaign performance and efficiency.
+

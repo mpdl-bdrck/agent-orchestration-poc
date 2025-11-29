@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "name": "Campaign Portfolio Pacing Dashboard",
+    "description": "Intelligent pacing dashboard showing campaign timeline, budget utilization, and performance against plan",
+    "version": "1.0",
+    "created_at": "2025-11-21",
+    "created_for": "campaign_portfolio_pacing"
+  },
+  "sheet_name": "Summary",
+  "campaign_config": {
+    "start_date": "2025-11-01",
+    "end_date": "2025-12-31",
+    "budget": 466000
+  },
+  "formulas": {
+    "A1": {
+      "formula": "\"🚀 CAMPAIGN PORTFOLIO PACING DASHBOARD\"",
+      "description": "Dashboard title",
+      "fallback_value": "Campaign Portfolio Pacing Dashboard"
+    },
+    "A3": {
+      "formula": "\"📅 CAMPAIGN TIMELINE\"",
+      "description": "Timeline section header",
+      "fallback_value": "CAMPAIGN TIMELINE"
+    },
+    "A4": {
+      "formula": "\"Start Date\"",
+      "description": "Start date label",
+      "fallback_value": "Start Date"
+    },
+    "B4": {
+      "formula": "DATE(2025,11,1)",
+      "description": "Campaign start date",
+      "fallback_value": "2025-11-01"
+    },
+    "A5": {
+      "formula": "\"End Date\"",
+      "description": "End date label",
+      "fallback_value": "End Date"
+    },
+    "B5": {
+      "formula": "DATE(2025,12,31)",
+      "description": "Campaign end date",
+      "fallback_value": "2025-12-31"
+    },
+    "A6": {
+      "formula": "\"Today\"",
+      "description": "Today label",
+      "fallback_value": "Today"
+    },
+    "B6": {
+      "formula": "=TODAY()",
+      "description": "Current date",
+      "fallback_value": "2025-11-21"
+    },
+    "A7": {
+      "formula": "\"Total Days\"",
+      "description": "Total campaign days label",
+      "fallback_value": "Total Days"
+    },
+    "B7": {
+      "formula": "=DAYS(B5, B4)",
+      "description": "Total campaign duration in days",
+      "fallback_value": "60"
+    },
+    "A8": {
+      "formula": "\"Days Passed\"",
+      "description": "Days passed label",
+      "fallback_value": "Days Passed"
+    },
+    "B8": {
+      "formula": "=DAYS(B6, B4)",
+      "description": "Days elapsed since campaign start",
+      "fallback_value": "20"
+    },
+    "A9": {
+      "formula": "\"Days Left\"",
+      "description": "Days remaining label",
+      "fallback_value": "Days Left"
+    },
+    "B9": {
+      "formula": "=DAYS(B5, B6)",
+      "description": "Days remaining in campaign",
+      "fallback_value": "40"
+    },
+    "A10": {
+      "formula": "\"Progress %\"",
+      "description": "Campaign progress percentage",
+      "fallback_value": "Progress %"
+    },
+    "B10": {
+      "formula": "=B8/B7",
+      "description": "Campaign progress as percentage",
+      "fallback_value": "0.33"
+    },
+    "A12": {
+      "formula": "\"💰 BUDGET PACING\"",
+      "description": "Budget pacing section header",
+      "fallback_value": "BUDGET PACING"
+    },
+    "A13": {
+      "formula": "\"Total Budget\"",
+      "description": "Total budget label",
+      "fallback_value": "Total Budget"
+    },
+    "B13": {
+      "formula": "466000",
+      "description": "Total campaign budget",
+      "fallback_value": "466000"
+    },
+    "A14": {
+      "formula": "\"Daily Budget Pace\"",
+      "description": "Daily budget allocation label",
+      "fallback_value": "Daily Budget Pace"
+    },
+    "B14": {
+      "formula": "=B13/B7",
+      "description": "Budget per day (total budget / total days)",
+      "fallback_value": "7766.67"
+    },
+    "A15": {
+      "formula": "\"Expected Spend to Date\"",
+      "description": "Expected spend based on days passed",
+      "fallback_value": "Expected Spend to Date"
+    },
+    "B15": {
+      "formula": "=B14*B8",
+      "description": "Expected spend: daily pace × days passed",
+      "fallback_value": "155333.33"
+    },
+    "A16": {
+      "formula": "\"Actual Spend to Date\"",
+      "description": "Current actual spend from portfolio data",
+      "fallback_value": "Actual Spend to Date"
+    },
+    "B16": {
+      "formula": "='Portfolio TOTAL'!C2",
+      "description": "Actual spend from Portfolio TOTAL worksheet",
+      "fallback_value": "0"
+    },
+    "A17": {
+      "formula": "\"Spend Variance\"",
+      "description": "Difference between actual and expected spend",
+      "fallback_value": "Spend Variance"
+    },
+    "B17": {
+      "formula": "=B16-B15",
+      "description": "Actual spend minus expected spend",
+      "fallback_value": "0"
+    },
+    "A18": {
+      "formula": "\"Pacing Status\"",
+      "description": "Campaign pacing status indicator",
+      "fallback_value": "Pacing Status"
+    },
+    "B18": {
+      "formula": "=IF(B17>0,\"🟢 AHEAD\",IF(B17<0,\"🔴 BEHIND\",\"🟡 ON PACE\"))",
+      "description": "Color-coded pacing status",
+      "fallback_value": "ON PACE"
+    },
+    "A19": {
+      "formula": "\"Budget Remaining\"",
+      "description": "Remaining budget",
+      "fallback_value": "Budget Remaining"
+    },
+    "B19": {
+      "formula": "=B13-B16",
+      "description": "Total budget minus actual spend",
+      "fallback_value": "466000"
+    },
+    "A20": {
+      "formula": "\"Daily Burn Rate\"",
+      "description": "Average daily spend so far",
+      "fallback_value": "Daily Burn Rate"
+    },
+    "B20": {
+      "formula": "=B16/B8",
+      "description": "Actual daily spend rate",
+      "fallback_value": "0"
+    },
+    "A22": {
+      "formula": "\"📊 ADVANCED PACING ANALYSIS\"",
+      "description": "Advanced analysis section header",
+      "fallback_value": "ADVANCED PACING ANALYSIS"
+    },
+    "A23": {
+      "formula": "\"Projected Final Spend\"",
+      "description": "Projected total spend at current rate",
+      "fallback_value": "Projected Final Spend"
+    },
+    "B23": {
+      "formula": "=(B16/B8)*B7",
+      "description": "Current daily rate × total days",
+      "fallback_value": "0"
+    },
+    "A24": {
+      "formula": "\"Budget Efficiency\"",
+      "description": "Actual vs expected spend ratio",
+      "fallback_value": "Budget Efficiency"
+    },
+    "B24": {
+      "formula": "=IFERROR(B16/B15,0)",
+      "description": "Efficiency ratio (actual/expected)",
+      "fallback_value": "0"
+    },
+    "A25": {
+      "formula": "\"Days to Budget Depletion\"",
+      "description": "Days until budget runs out at current rate",
+      "fallback_value": "Days to Budget Depletion"
+    },
+    "B25": {
+      "formula": "=IF(B20>0,B19/B20,0)",
+      "description": "Remaining budget ÷ daily burn rate",
+      "fallback_value": "0"
+    },
+    "A26": {
+      "formula": "\"Spend Trend (7-day)\"",
+      "description": "Recent spending trend slope",
+      "fallback_value": "Spend Trend (7-day)"
+    },
+    "B26": {
+      "formula": "=SLOPE(OFFSET('Portfolio DAILY'!D:D,COUNT('Portfolio DAILY'!D:D)-7,0,7,1))",
+      "description": "7-day spending trend slope",
+      "fallback_value": "0"
+    },
+    "A28": {
+      "formula": "\"🎯 PACING INSIGHTS\"",
+      "description": "Insights section header",
+      "fallback_value": "PACING INSIGHTS"
+    },
+    "A29": {
+      "formula": "\"Budget Utilization\"",
+      "description": "Percentage of budget spent",
+      "fallback_value": "Budget Utilization"
+    },
+    "B29": {
+      "formula": "=B16/B13",
+      "description": "Percentage of total budget spent",
+      "fallback_value": "0"
+    },
+    "A30": {
+      "formula": "\"Time Efficiency\"",
+      "description": "Spend rate vs time progress",
+      "fallback_value": "Time Efficiency"
+    },
+    "B30": {
+      "formula": "=B29/B10",
+      "description": "Budget utilization ÷ time progress",
+      "fallback_value": "0"
+    },
+    "A31": {
+      "formula": "\"Projected Budget Status\"",
+      "description": "Projected final budget status",
+      "fallback_value": "Projected Budget Status"
+    },
+    "B31": {
+      "formula": "=IF(B23>B13,\"🔴 OVER BUDGET\",IF(B23<B13*0.9,\"🟢 UNDER BUDGET\",\"🟡 ON BUDGET\"))",
+      "description": "Projected final budget status",
+      "fallback_value": "ON BUDGET"
+    }
+  },
+  "conditional_formatting": {
+    "pacing_status": true,
+    "budget_alerts": true
+  },
+  "number_formats": {
+    "B10": "0.00%",        // Progress %
+    "B13": "$#,##0",       // Total Budget
+    "B14": "$#,##0.00",    // Daily Budget Pace
+    "B15": "$#,##0",       // Expected Spend
+    "B16": "$#,##0",       // Actual Spend
+    "B17": "$#,##0",       // Spend Variance
+    "B19": "$#,##0",       // Budget Remaining
+    "B20": "$#,##0.00",    // Daily Burn Rate
+    "B23": "$#,##0",       // Projected Final Spend
+    "B24": "0.00%",        // Budget Efficiency
+    "B25": "0",             // Days to Budget Depletion
+    "B26": "$#,##0.00",    // Spend Trend
+    "B29": "0.00%"         // Budget Utilization
+  }
+}

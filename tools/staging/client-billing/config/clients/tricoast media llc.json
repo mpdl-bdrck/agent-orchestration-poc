@@ -1,0 +1,15 @@
+{
+    "client_name": "Tricoast Media LLC",
+    "spreadsheet_id": "1BJNDADj0F_bDBYKN_PIUfJfUF7hORPZuVL2-dVCyCS8",
+    "timezone": "PST",
+    "timezone_full": "America/Los_Angeles",
+    "deal_classification": {
+        "method": "string_matching",
+        "patterns": {
+            "deals": ["Deals"],
+            "marketplace": ["Marketplace"]
+        },
+        "case_sensitive": false
+    },
+    "date_format": "DD/MM/YYYY"
+}

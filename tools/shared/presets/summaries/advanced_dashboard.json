@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "name": "Advanced Campaign Intelligence Dashboard",
+    "description": "Sophisticated dashboard with trend analysis, risk assessment, and performance forecasting",
+    "version": "1.0",
+    "created_at": "2025-11-21",
+    "created_for": "campaign_spend_analysis"
+  },
+  "sheet_name": "Advanced Dashboard",
+  "formulas": {
+    "A1": {
+      "formula": "\"🚀 Advanced Campaign Intelligence Dashboard\"",
+      "description": "Dashboard title",
+      "fallback_value": "Advanced Dashboard"
+    },
+    "A3": {
+      "formula": "\"📊 Executive Summary\"",
+      "description": "Executive summary section",
+      "fallback_value": "Executive Summary"
+    },
+    "A4": {
+      "formula": "\"Total Budget\"",
+      "description": "Total budget label",
+      "fallback_value": "Total Budget"
+    },
+    "B4": {
+      "formula": "=SUM('Portfolio TOTAL'!B2)",
+      "description": "Sum of all campaign budgets",
+      "fallback_value": 0
+    },
+    "A5": {
+      "formula": "\"Total Spend\"",
+      "description": "Total spend label",
+      "fallback_value": "Total Spend"
+    },
+    "B5": {
+      "formula": "=SUM('Portfolio TOTAL'!C2)",
+      "description": "Sum of all campaign spending",
+      "fallback_value": 0
+    },
+    "A6": {
+      "formula": "\"Budget Utilization\"",
+      "description": "Budget utilization percentage",
+      "fallback_value": "Budget %"
+    },
+    "B6": {
+      "formula": "=IFERROR(B5/B4, 0)",
+      "description": "Overall budget utilization",
+      "fallback_value": 0
+    },
+    "A7": {
+      "formula": "\"Portfolio Health Score\"",
+      "description": "Weighted health score",
+      "fallback_value": "Health Score"
+    },
+    "B7": {
+      "formula": "=0.4*B6 + 0.3*AVERAGE('Campaigns TOTAL'!E:E) + 0.3*(1-COUNTIF('Campaigns TOTAL'!E:E, \">1\")/COUNT('Campaigns TOTAL'!E:E))",
+      "description": "Weighted portfolio health score",
+      "fallback_value": 0
+    },
+    "A9": {
+      "formula": "\"🎯 Performance Analysis\"",
+      "description": "Performance analysis section",
+      "fallback_value": "Performance Analysis"
+    },
+    "A10": {
+      "formula": "\"Best Performing Campaign\"",
+      "description": "Best campaign identifier",
+      "fallback_value": "Best Campaign"
+    },
+    "B10": {
+      "formula": "=INDEX('Campaigns TOTAL'!B:B, MATCH(MAX('Campaigns TOTAL'!E:E), 'Campaigns TOTAL'!E:E, 0))",
+      "description": "Campaign with highest spend percentage",
+      "fallback_value": "N/A"
+    },
+    "A11": {
+      "formula": "\"Worst Performing Campaign\"",
+      "description": "Worst campaign identifier",
+      "fallback_value": "Worst Campaign"
+    },
+    "B11": {
+      "formula": "=INDEX('Campaigns TOTAL'!B:B, MATCH(MIN('Campaigns TOTAL'!E:E), 'Campaigns TOTAL'!E:E, 0))",
+      "description": "Campaign with lowest spend percentage",
+      "fallback_value": "N/A"
+    },
+    "A12": {
+      "formula": "\"Campaign Efficiency (Imp/$)\"",
+      "description": "Average impressions per dollar",
+      "fallback_value": "Efficiency"
+    },
+    "B12": {
+      "formula": "=AVERAGE('Campaigns TOTAL'!C:C)/AVERAGE('Campaigns TOTAL'!D:D)",
+      "description": "Average impressions per dollar spent",
+      "fallback_value": 0
+    },
+    "A13": {
+      "formula": "\"Campaigns Over Budget\"",
+      "description": "Count of over-budget campaigns",
+      "fallback_value": "Over Budget"
+    },
+    "B13": {
+      "formula": "=COUNTIF('Campaigns TOTAL'!E:E, \">1\")",
+      "description": "Number of campaigns exceeding budget",
+      "fallback_value": 0
+    },
+    "A15": {
+      "formula": "\"📈 Trend Analysis\"",
+      "description": "Trend analysis section",
+      "fallback_value": "Trend Analysis"
+    },
+    "A16": {
+      "formula": "\"Spend Ratio Trend\"",
+      "description": "Daily spend ratio trend slope",
+      "fallback_value": "Spend Trend"
+    },
+    "B16": {
+      "formula": "=SLOPE('Portfolio DAILY'!F:F)",
+      "description": "Slope of daily spend ratio trend",
+      "fallback_value": 0
+    },
+    "A17": {
+      "formula": "\"Trend Direction\"",
+      "description": "Trend direction indicator",
+      "fallback_value": "Trend Direction"
+    },
+    "B17": {
+      "formula": "=IF(B16>0.01, \"📈 Increasing\", IF(B16<-0.01, \"📉 Decreasing\", \"➡️ Stable\"))",
+      "description": "Human-readable trend direction",
+      "fallback_value": "Stable"
+    },
+    "A18": {
+      "formula": "\"Volatility Index\"",
+      "description": "Spend volatility measure",
+      "fallback_value": "Volatility"
+    },
+    "B18": {
+      "formula": "=STDEV.P('Portfolio DAILY'!F:F)/AVERAGE('Portfolio DAILY'!F:F)",
+      "description": "Coefficient of variation for spend ratios",
+      "fallback_value": 0
+    },
+    "A19": {
+      "formula": "\"High Volatility Days\"",
+      "description": "Days with high spend variation",
+      "fallback_value": "High Vol Days"
+    },
+    "B19": {
+      "formula": "=COUNTIFS('Portfolio DAILY'!F:F, \">\"&AVERAGE('Portfolio DAILY'!F:F)*1.5, 'Portfolio DAILY'!F:F, \"<\"&AVERAGE('Portfolio DAILY'!F:F)*0.5)",
+      "description": "Days with spend ratio >150% or <50% of average",
+      "fallback_value": 0
+    },
+    "A21": {
+      "formula": "\"⚠️ Risk Assessment\"",
+      "description": "Risk assessment section",
+      "fallback_value": "Risk Assessment"
+    },
+    "A22": {
+      "formula": "\"Budget Risk Level\"",
+      "description": "Budget utilization risk",
+      "fallback_value": "Budget Risk"
+    },
+    "B22": {
+      "formula": "=IF(B6>0.95, \"🔴 HIGH RISK\", IF(B6>0.85, \"🟡 MEDIUM RISK\", \"🟢 LOW RISK\"))",
+      "description": "Budget risk assessment",
+      "fallback_value": "LOW RISK"
+    },
+    "A23": {
+      "formula": "\"Campaign Risk Level\"",
+      "description": "Campaign performance risk",
+      "fallback_value": "Campaign Risk"
+    },
+    "B23": {
+      "formula": "=IF(B13>COUNT('Campaigns TOTAL'!B:B)*0.3, \"🔴 HIGH RISK\", IF(B13>COUNT('Campaigns TOTAL'!B:B)*0.1, \"🟡 MEDIUM RISK\", \"🟢 LOW RISK\"))",
+      "description": "Campaign over-budget risk assessment",
+      "fallback_value": "LOW RISK"
+    },
+    "A24": {
+      "formula": "\"Trend Risk Level\"",
+      "description": "Trend stability risk",
+      "fallback_value": "Trend Risk"
+    },
+    "B24": {
+      "formula": "=IF(B18>0.5, \"🔴 HIGH RISK\", IF(B18>0.2, \"🟡 MEDIUM RISK\", \"🟢 LOW RISK\"))",
+      "description": "Trend volatility risk assessment",
+      "fallback_value": "LOW RISK"
+    },
+    "A25": {
+      "formula": "\"Overall Risk Score\"",
+      "description": "Combined risk assessment",
+      "fallback_value": "Overall Risk"
+    },
+    "B25": {
+      "formula": "=IF(OR(B22=\"🔴 HIGH RISK\", B23=\"🔴 HIGH RISK\", B24=\"🔴 HIGH RISK\"), \"🔴 HIGH RISK\", IF(OR(B22=\"🟡 MEDIUM RISK\", B23=\"🟡 MEDIUM RISK\", B24=\"🟡 MEDIUM RISK\"), \"🟡 MEDIUM RISK\", \"🟢 LOW RISK\"))",
+      "description": "Combined risk assessment from all factors",
+      "fallback_value": "LOW RISK"
+    },
+    "A27": {
+      "formula": "\"🔮 Forecasting\"",
+      "description": "Forecasting section",
+      "fallback_value": "Forecasting"
+    },
+    "A28": {
+      "formula": "\"Next Day Forecast\"",
+      "description": "Forecast for next day",
+      "fallback_value": "Next Day Forecast"
+    },
+    "B28": {
+      "formula": "=FORECAST(COUNT('Portfolio DAILY'!A:A)+1, 'Portfolio DAILY'!F:F, ROW(INDIRECT(\"1:\"&COUNT('Portfolio DAILY'!F:F))))",
+      "description": "Linear forecast for next day's spend ratio",
+      "fallback_value": 0
+    },
+    "A29": {
+      "formula": "\"Forecast Confidence\"",
+      "description": "Confidence in forecast",
+      "fallback_value": "Confidence"
+    },
+    "B29": {
+      "formula": "=RSQ('Portfolio DAILY'!F:F, ROW(INDIRECT(\"1:\"&COUNT('Portfolio DAILY'!F:F))))",
+      "description": "R-squared value indicating forecast reliability",
+      "fallback_value": 0
+    }
+  },
+  "conditional_formatting": {
+    "risk_levels": true
+  }
+}

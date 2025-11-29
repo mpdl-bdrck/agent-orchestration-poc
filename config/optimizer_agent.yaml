@@ -1,0 +1,32 @@
+# Optimizer Agent Configuration
+agent_id: "optimizer"
+agent_name: "Optimizer Agent"
+agent_type: "specialist"
+version: "1.0.0"
+
+# LLM Configuration
+llm:
+  provider: "gemini"
+  model: "gemini-2.0-flash-exp"
+  temperature: 0.7
+  max_tokens: 2000
+
+# Prompt Templates
+prompts:
+  system: "prompts/optimizer_agent/system.txt"
+  user: "prompts/optimizer_agent/user.txt"
+
+# Input/Output Fields
+input_fields:
+  - "question"
+  - "context"
+
+output_fields:
+  - "answer"
+  - "analysis"
+
+# Validation Rules
+validation:
+  required_fields:
+    - "answer"
+

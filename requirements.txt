@@ -1,0 +1,44 @@
+# Agentic CRAG Launchpad Dependencies
+
+# Core LLM Framework
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
+langchain-core>=0.1.0
+langgraph>=0.0.20  # LangGraph for supervisor pattern
+
+# Optional LLM Providers
+# langchain-openai>=0.0.5  # For OpenAI provider
+# langchain-anthropic>=0.1.0  # For Anthropic provider
+
+# Embeddings
+sentence-transformers>=2.2.0
+torch>=2.0.0  # Required by sentence-transformers
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pgvector>=0.2.0
+
+# Configuration & Environment
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# CLI & Display
+rich>=13.0.0  # For terminal formatting and "glass box" output
+colorama>=0.4.6  # For cross-platform colors
+
+# Utilities
+pydantic>=2.0.0  # For data validation
+
+# Tool Dependencies (for portfolio pacing tool)
+pandas>=2.0.0  # For data analysis
+boto3>=1.26.0  # For AWS services (used by tools)
+
+# Optional: Observability
+# langfuse>=2.0.0  # For Langfuse integration (optional)
+
+# Development (optional)
+# pytest>=7.0.0  # For testing
+# black>=23.0.0  # For code formatting
+# mypy>=1.0.0  # For type checking
+

@@ -1,0 +1,7 @@
+Question: {question}
+
+Knowledge Base Context:
+{context}
+
+Analyze this question from a supply chain navigation perspective. Focus on deal management, QPS optimization, floor prices, and SSP relationships. Provide strategic guidance on optimizing the supply path and managing supply-side platform relationships.
+

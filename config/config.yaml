@@ -1,0 +1,89 @@
+# Agentic CRAG Launchpad Main Configuration
+
+# Project Information
+project_name: "Agentic CRAG Launchpad"
+version: "1.0.0"
+description: "Generic multi-agent CRAG system for knowledge base Q&A"
+
+# Knowledge Base Configuration
+knowledge_base:
+  # Path to knowledge base directory (Markdown files)
+  base_path: "./knowledge-base"
+  
+  # Chunk Configuration
+  chunking:
+    max_chunk_size: 1000  # Maximum characters per chunk
+    chunk_overlap: 200     # Overlap between chunks
+    min_chunk_size: 100    # Minimum characters per chunk
+
+# Database Configuration
+database:
+  # Table name for knowledge chunks
+  chunks_table: "knowledge_chunks"
+  
+  # Enable per-context databases (one database per knowledge base)
+  # If false, uses single database with context_id column
+  per_context_databases: false
+
+# Semantic Search Configuration
+search:
+  # Default number of results
+  default_limit: 10
+  
+  # Maximum results
+  max_limit: 20
+  
+  # Embedding model
+  embedding_model: "all-MiniLM-L6-v2"  # sentence-transformers model
+  
+  # Hybrid search weights (keyword vs semantic)
+  keyword_weight: 0.5
+  semantic_weight: 0.5
+
+# CRAG Configuration
+crag:
+  # Default relevance threshold (0.0-1.0)
+  default_threshold: 0.7
+  
+  # Minimum relevant chunks required
+  min_relevant_chunks: 1
+  
+  # Enable query rewriting when insufficient chunks
+  enable_query_rewriting: true
+
+# Agent Configuration
+agents:
+  # Orchestrator agent config path
+  orchestrator_config: "config/orchestrator.yaml"
+  
+  # Specialist agents
+  specialists:
+    - content_analyzer
+    - structure_analyzer
+    - detail_analyzer
+    - format_analyzer
+
+# CLI Configuration
+cli:
+  # Display configuration
+  display:
+    # Colors for "glass box" output
+    reasoning_color: "yellow"      # Grey/yellow for reasoning
+    answer_color: "green"           # White/green for answers
+    tool_call_color: "cyan"         # Cyan for tool calls
+    agent_color: "magenta"          # Magenta for agent names
+  
+  # Show real-time tool calls
+  show_tool_calls: true
+  
+  # Show agent reasoning
+  show_reasoning: true
+  
+  # Show CRAG metrics
+  show_crag_metrics: true
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+

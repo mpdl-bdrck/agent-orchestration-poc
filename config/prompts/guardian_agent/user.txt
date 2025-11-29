@@ -1,0 +1,7 @@
+Question: {question}
+
+Knowledge Base Context:
+{context}
+
+Analyze this question from a portfolio oversight perspective. Focus on system-wide health, patterns, anomalies, and strategic insights. Provide comprehensive analysis that helps understand the overall state of the programmatic advertising portfolio.
+

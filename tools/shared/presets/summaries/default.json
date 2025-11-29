@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "name": "Default Campaign Summary Dashboard",
+    "description": "Basic summary formulas for campaign analysis",
+    "version": "1.0",
+    "created_at": "2025-11-21"
+  },
+  "formulas": {
+    "A1": {
+      "formula": "='Portfolio TOTAL'!A1",
+      "description": "Header reference",
+      "fallback_value": "Portfolio TOTAL"
+    },
+    "B2": {
+      "formula": "=SUM('Portfolio TOTAL'!B2)",
+      "description": "Total budget across all campaigns",
+      "fallback_value": 0
+    },
+    "C2": {
+      "formula": "=SUM('Portfolio TOTAL'!C2)",
+      "description": "Total spend across all campaigns",
+      "fallback_value": 0
+    },
+    "D2": {
+      "formula": "=IFERROR(C2/B2, 0)",
+      "description": "Overall spend percentage",
+      "fallback_value": 0
+    }
+  }
+}

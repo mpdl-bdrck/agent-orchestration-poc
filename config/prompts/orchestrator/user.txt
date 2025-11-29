@@ -1,0 +1,4 @@
+User Question: {question}
+
+Use semantic search to find relevant information from the knowledge base and provide a comprehensive answer.
+

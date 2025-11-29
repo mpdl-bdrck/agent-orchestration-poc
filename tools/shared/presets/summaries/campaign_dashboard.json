@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "name": "Campaign Performance Dashboard",
+    "description": "Comprehensive dashboard for campaign spend analysis with portfolio metrics, campaign comparisons, and trend analysis",
+    "version": "1.0",
+    "created_at": "2025-11-21",
+    "created_for": "campaign_spend_analysis"
+  },
+  "formulas": {
+    "A1": {
+      "formula": "\"Campaign Performance Dashboard\"",
+      "description": "Dashboard title",
+      "fallback_value": "Dashboard"
+    },
+    "A3": {
+      "formula": "\"Portfolio Overview\"",
+      "description": "Portfolio section header",
+      "fallback_value": "Portfolio Overview"
+    },
+    "A4": {
+      "formula": "\"Total Budget\"",
+      "description": "Total budget label",
+      "fallback_value": "Total Budget"
+    },
+    "B4": {
+      "formula": "=SUM('Portfolio TOTAL'!B2)",
+      "description": "Sum of all campaign budgets",
+      "fallback_value": 0
+    },
+    "A5": {
+      "formula": "\"Total Spend\"",
+      "description": "Total spend label",
+      "fallback_value": "Total Spend"
+    },
+    "B5": {
+      "formula": "=SUM('Portfolio TOTAL'!C2)",
+      "description": "Sum of all campaign spending",
+      "fallback_value": 0
+    },
+    "A6": {
+      "formula": "\"Spend Percentage\"",
+      "description": "Overall spend percentage label",
+      "fallback_value": "Spend %"
+    },
+    "B6": {
+      "formula": "=IFERROR(B5/B4, 0)",
+      "description": "Overall budget utilization percentage",
+      "fallback_value": 0
+    },
+    "A7": {
+      "formula": "\"Avg Daily Spend\"",
+      "description": "Average daily spend label",
+      "fallback_value": "Avg Daily Spend"
+    },
+    "B7": {
+      "formula": "=AVERAGE('Portfolio TOTAL'!D2)",
+      "description": "Average daily spend across portfolio",
+      "fallback_value": 0
+    },
+    "A9": {
+      "formula": "\"Campaign Performance\"",
+      "description": "Campaign performance section header",
+      "fallback_value": "Campaign Performance"
+    },
+    "A10": {
+      "formula": "\"Best Performing Campaign\"",
+      "description": "Best campaign label",
+      "fallback_value": "Best Campaign"
+    },
+    "B10": {
+      "formula": "=INDEX('Campaigns TOTAL'!B:B, MATCH(MAX('Campaigns TOTAL'!E:E), 'Campaigns TOTAL'!E:E, 0))",
+      "description": "Campaign name with highest spend percentage",
+      "fallback_value": "N/A"
+    },
+    "A11": {
+      "formula": "\"Highest Spend %\"",
+      "description": "Highest spend percentage label",
+      "fallback_value": "Highest Spend %"
+    },
+    "B11": {
+      "formula": "=MAX('Campaigns TOTAL'!E:E)",
+      "description": "Highest campaign spend percentage",
+      "fallback_value": 0
+    },
+    "A12": {
+      "formula": "\"Avg Campaign Spend %\"",
+      "description": "Average campaign spend percentage label",
+      "fallback_value": "Avg Campaign Spend %"
+    },
+    "B12": {
+      "formula": "=AVERAGE('Campaigns TOTAL'!E:E)",
+      "description": "Average spend percentage across all campaigns",
+      "fallback_value": 0
+    },
+    "A13": {
+      "formula": "\"Campaigns Over 100%\"",
+      "description": "Count of campaigns over budget",
+      "fallback_value": "Over Budget"
+    },
+    "B13": {
+      "formula": "=COUNTIF('Campaigns TOTAL'!E:E, \">1\")",
+      "description": "Number of campaigns spending over 100% of budget",
+      "fallback_value": 0
+    },
+    "A15": {
+      "formula": "\"Daily Trends\"",
+      "description": "Daily trends section header",
+      "fallback_value": "Daily Trends"
+    },
+    "A16": {
+      "formula": "\"Latest Spend Ratio\"",
+      "description": "Latest daily spend ratio label",
+      "fallback_value": "Latest Ratio"
+    },
+    "B16": {
+      "formula": "=SORT('Portfolio DAILY'!F:F, 1, FALSE)",
+      "description": "Most recent daily spend ratio",
+      "fallback_value": 0
+    },
+    "A17": {
+      "formula": "\"Highest Daily Ratio\"",
+      "description": "Highest daily spend ratio label",
+      "fallback_value": "Peak Ratio"
+    },
+    "B17": {
+      "formula": "=MAX('Portfolio DAILY'!F:F)",
+      "description": "Highest daily spend ratio in period",
+      "fallback_value": 0
+    },
+    "A18": {
+      "formula": "\"Days with High Spend\"",
+      "description": "Count of days with high spend ratios",
+      "fallback_value": "High Spend Days"
+    },
+    "B18": {
+      "formula": "=COUNTIF('Portfolio DAILY'!F:F, \">2\")",
+      "description": "Days where spend was more than 2x previous day",
+      "fallback_value": 0
+    },
+    "A20": {
+      "formula": "\"Line Item Insights\"",
+      "description": "Line item insights section header",
+      "fallback_value": "Line Item Insights"
+    },
+    "A21": {
+      "formula": "\"Most Expensive Line Item\"",
+      "description": "Most expensive line item label",
+      "fallback_value": "Top Line Item"
+    },
+    "B21": {
+      "formula": "=INDEX('Line Items TOTAL'!C:C, MATCH(MAX('Line Items TOTAL'!D:D), 'Line Items TOTAL'!D:D, 0))",
+      "description": "Line item name with highest total spend",
+      "fallback_value": "N/A"
+    },
+    "A22": {
+      "formula": "\"Highest Spend % Line Item\"",
+      "description": "Highest spend percentage line item label",
+      "fallback_value": "Top % Line Item"
+    },
+    "B22": {
+      "formula": "=INDEX('Line Items TOTAL'!C:C, MATCH(MAX('Line Items TOTAL'!E:E), 'Line Items TOTAL'!E:E, 0))",
+      "description": "Line item name with highest spend percentage",
+      "fallback_value": "N/A"
+    },
+    "A23": {
+      "formula": "\"Line Items Over Budget\"",
+      "description": "Count of line items over budget",
+      "fallback_value": "Over Budget Items"
+    },
+    "B23": {
+      "formula": "=COUNTIF('Line Items TOTAL'!E:E, \">1\")",
+      "description": "Number of line items spending over 100% of campaign budget",
+      "fallback_value": 0
+    }
+  }
+}
