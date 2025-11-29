@@ -102,8 +102,15 @@ class BaseAgent(ABC):
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError("GEMINI_API_KEY environment variable not set")
+            
+            # Enforce gemini-2.5-flash-lite as the only allowed model
+            model = llm_config.get("model", "gemini-2.5-flash-lite")
+            if model != "gemini-2.5-flash-lite":
+                logger.warning(f"Model '{model}' is not allowed. Overriding to 'gemini-2.5-flash-lite'")
+                model = "gemini-2.5-flash-lite"
+            
             return ChatGoogleGenerativeAI(
-                model=llm_config["model"],
+                model=model,
                 temperature=llm_config.get("temperature", 0.7),
                 max_tokens=llm_config.get("max_tokens", 2000),
                 google_api_key=api_key

@@ -100,7 +100,7 @@ class CRAGValidator:
                 "version": "1.0",
                 "llm": {
                     "provider": "gemini",
-                    "model": "gemini-1.5-flash",  # Use faster model for grading
+                    "model": "gemini-2.5-flash-lite",  # Use base model for grading
                     "temperature": 0.1,  # Low temperature for consistent grading
                     "max_tokens": 500
                 },
@@ -130,7 +130,7 @@ class CRAGValidator:
                 "version": "1.0",
                 "llm": {
                     "provider": "gemini",
-                    "model": "gemini-1.5-flash",  # Use faster model for grading
+                    "model": "gemini-2.5-flash-lite",  # Use base model for grading
                     "temperature": 0.1,  # Low temperature for consistent grading
                     "max_tokens": 500
                 },
