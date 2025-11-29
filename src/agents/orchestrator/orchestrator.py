@@ -120,7 +120,7 @@ class OrchestratorAgent(BaseAgent):
                 supervisor_prompt = supervisor_prompt_path.read_text()
             else:
                 # Fallback prompt
-                supervisor_prompt = """You are the Supervisor, responsible for routing queries to specialist agents.
+                supervisor_prompt = """You are the Orchestrator Agent, responsible for routing queries to specialist agents.
                 
 AVAILABLE AGENTS:
 - guardian: Portfolio oversight, monitoring, anomaly detection

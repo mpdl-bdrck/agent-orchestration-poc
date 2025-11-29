@@ -161,9 +161,21 @@ class GlassBoxDisplay:
                 stream.add_text(" World")
         """
         agent_lower = agent_name.lower()
+        
+        # Map internal code names to display names (Pattern vs. Persona)
+        display_name_map = {
+            'supervisor': 'Orchestrator',
+            'orchestrator': 'Orchestrator'
+        }
+        
         agent_emoji = emoji or self.get_agent_emoji(agent_lower)
         agent_color = self.get_agent_color(agent_lower)
-        agent_display_name = agent_name.replace('_', ' ').title()
+        
+        # Use mapped display name if available, otherwise use title case
+        if agent_lower in display_name_map:
+            agent_display_name = display_name_map[agent_lower]
+        else:
+            agent_display_name = agent_name.replace('_', ' ').title()
         
         return AgentStreamingContext(
             self.console,
