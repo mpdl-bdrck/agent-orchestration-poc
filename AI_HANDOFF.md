@@ -445,6 +445,118 @@ src/
 3. **Fixed Guardian tool calling** - Uses supervisor instruction to avoid unnecessary tool calls
 4. **Removed tool-calling pattern** - Now uses native router with structured output
 
+### Latest Learnings (Cost Framing & CoT Inhibition)
+
+#### Critical Learning: Cost Framing + Chain of Thought Inhibition
+
+**Problem**: Guardian agent was calling tools for simple introductions/greetings.
+
+**Root Cause**: "Lite" models prioritize speed over inhibition - they see tools and use them impulsively.
+
+**Solution**: Implement **Cost Framing** + **Chain of Thought (CoT) Inhibition**.
+
+##### 1. Cost Framing (System Prompt)
+- Frame tools as "computationally expensive" and "connect to a live database"
+- Explicitly state "NEVER call this tool for introductions, greetings, or general explanations"
+- Only call when user requires "NEW, LIVE NUMBERS"
+
+**Implementation**:
+```python
+OPERATIONAL PROTOCOL - EFFICIENCY IS PARAMOUNT:
+
+1. EFFICIENCY IS PARAMOUNT. You have access to the `analyze_portfolio_pacing` tool.
+2. This tool is "computationally expensive" and connects to a live database.
+3. NEVER call this tool for introductions, greetings, or general explanations of your role.
+4. ONLY call this tool if the user's request specifically requires retrieving NEW, LIVE NUMBERS or portfolio data.
+```
+
+##### 2. Chain of Thought (CoT) Inhibition
+- Force model to output thought process BEFORE calling any tool
+- Require explicit reasoning: "Does the user require LIVE DATA to answer this?"
+- Make it FORBIDDEN to call tool unless reasoning determines "YES, live data required"
+
+**Implementation**:
+```python
+MANDATORY REASONING PROTOCOL (Chain of Thought Inhibition):
+
+Before you decide to use a tool or speak, you MUST output your thought process.
+
+REASONING STEP - Answer these questions in your mind BEFORE calling any tool:
+
+1. What is the user asking for?
+2. Does the user require LIVE DATA to answer this question?
+   - If asking "who are you?" → NO, does NOT require live data
+   - If asking "how is my portfolio?" → YES, requires live data
+3. Can I answer this from my general knowledge?
+
+INHIBITION RULE: If reasoning determines NO live data needed, FORBIDDEN from calling tool.
+```
+
+##### 3. Restrictive Tool Description
+- Changed from descriptive "WHEN TO USE/WHEN NOT TO USE" to "CRITICAL USAGE RULES"
+- Used "STRICTLY RESERVED" language
+- Emphasized "computationally expensive"
+- "If ambiguous, err on the side of NOT calling"
+
+**Implementation**:
+```python
+description="""Connects to the live database to fetch current pacing metrics and portfolio insights.
+
+CRITICAL USAGE RULES:
+- STRICTLY RESERVED for queries asking for *numbers*, *data*, *status*, or *health* metrics
+- DO NOT USE if the user is just asking who you are or what you do
+- If the input is ambiguous, err on the side of NOT calling this tool
+- This tool is computationally expensive - only use when live data is explicitly required
+"""
+```
+
+##### 4. Model Upgrade: gemini-1.5-flash-002
+- Switched from `gemini-2.5-flash-lite` to `gemini-1.5-flash-002`
+- Better inhibition capabilities (reduces "Tool Hallucinations")
+- Production-ready with 2000+ RPM limits (vs experimental model's 10 RPM)
+- Specifically tuned to respect "When NOT to use" instructions
+
+##### 5. Centralized Model Configuration
+- Added centralized LLM config in `config/config.yaml`
+- All agents inherit defaults but can override
+- Single source of truth for model changes
+- Validation against allowed models list
+
+**Implementation**:
+```yaml
+# config/config.yaml
+llm:
+  default_model: "gemini-1.5-flash-002"
+  default_provider: "gemini"
+  default_temperature: 0.7
+  default_max_tokens: 2000
+  allowed_models:
+    - "gemini-1.5-flash-002"
+    - "gemini-1.5-flash"
+    - "gemini-1.5-pro"
+    - "gemini-1.5-pro-latest"
+```
+
+**Benefits**:
+1. **Scalable**: Works with any phrasing ("Greetings", "What's up?", "Identify yourself")
+2. **AI-native**: Leverages model's reasoning ability instead of hardcoded checks
+3. **Efficient**: Prevents unnecessary database calls and latency
+4. **Production-ready**: High RPM limits for real-world usage
+
+**Files Updated**:
+- `config/prompts/guardian_agent/system.txt` - Cost framing + CoT inhibition
+- `src/agents/specialists/guardian_agent.py` - Restrictive tool description
+- `src/utils/agent_loop.py` - Reasoning visibility before tool calls
+- `config/config.yaml` - Centralized LLM configuration
+- `src/core/base_agent.py` - Centralized config support
+- All agent configs - Updated to `gemini-1.5-flash-002`
+
+#### Key Lesson: "Lite" Models Need Inhibition Training
+
+"Lite" models prioritize speed over accuracy. They act like eager interns - seeing a tool and clicking it immediately without thinking "is this actually necessary?"
+
+Solution: **Cost Framing** + **CoT Inhibition** + **Better Model** creates a "thoughtful intern" that considers efficiency and requirements before acting.
+
 ---
 
 ## Key Architectural Decisions
@@ -554,6 +666,20 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 ---
 
 **Remember**: When in doubt, ask yourself: "Can this be solved with better prompts instead of code logic?" The answer is almost always yes.
+
+### Final Lesson: "Lite" Models Need Inhibition Training
+
+"Lite" models prioritize speed over accuracy. They act like eager interns - seeing a tool and clicking it immediately without thinking "is this actually necessary?"
+
+**Solution**: Cost Framing + CoT Inhibition + Better Model creates a "thoughtful intern" that considers efficiency and requirements before acting.
+
+**Key Pattern**: If you see impulsive tool usage, add:
+1. **Cost framing** (tools are expensive)
+2. **CoT inhibition** (force reasoning first)
+3. **Better model** (higher inhibition capabilities)
+4. **Restrictive descriptions** (strict usage rules)
+
+This prevents unnecessary tool calls while maintaining scalability.
 
 ---
 
