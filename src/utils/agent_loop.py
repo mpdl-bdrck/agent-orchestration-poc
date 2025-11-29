@@ -84,6 +84,14 @@ def execute_agent_loop(
 
         # If we have tool calls, execute them
         if has_tool_calls:
+            # Emit reasoning if present (LLM might provide reasoning before tool calls)
+            if has_content and streaming_callback:
+                try:
+                    # Emit reasoning before tool execution for debugging/transparency
+                    streaming_callback("reasoning", result.content.strip(), None)
+                except Exception:
+                    pass  # Don't fail if callback errors
+            
             # Add assistant message with tool calls
             messages.append(result)
 

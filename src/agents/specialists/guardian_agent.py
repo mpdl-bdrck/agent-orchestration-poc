@@ -148,19 +148,15 @@ unless portfolio data is explicitly needed for the response.
                 StructuredTool.from_function(
                     func=self._analyze_portfolio_pacing,
                     name="analyze_portfolio_pacing",
-                    description="""Analyze portfolio pacing and generate dashboard-style insights.
+                    description="""Connects to the live database to fetch current pacing metrics and portfolio insights.
                     
-                    WHEN TO USE:
-                    - User explicitly asks for portfolio data, numbers, health status, or pacing
-                    - User asks about budget utilization, spending trends, or campaign performance
-                    - User requests specific portfolio metrics or analysis that requires real data
-                    
-                    WHEN NOT TO USE:
-                    - DO NOT use for general conversation, introductions, or greetings
-                    - DO NOT use when asked "who are you?", "introduce yourself", or role explanations
-                    - DO NOT use if the user has not provided a specific portfolio context or focus
-                    - DO NOT use for questions that don't require portfolio data analysis
-                    - DO NOT use for simple informational questions that can be answered from your knowledge
+                    CRITICAL USAGE RULES:
+                    - STRICTLY RESERVED for queries asking for *numbers*, *data*, *status*, or *health* metrics
+                    - DO NOT USE if the user is just asking who you are or what you do
+                    - DO NOT USE for introductions, greetings, or general conversation
+                    - DO NOT USE for role explanations or "who are you?" questions
+                    - If the input is ambiguous, err on the side of NOT calling this tool
+                    - This tool is computationally expensive - only use when live data is explicitly required
                     
                     This tool provides comprehensive portfolio oversight including:
                     - Campaign Portfolio Timeline (start/end dates, days passed/left)
