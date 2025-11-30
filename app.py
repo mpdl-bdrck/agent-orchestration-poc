@@ -44,14 +44,44 @@ except Exception:
     pass
 
 # Configure Chainlit's data layer BEFORE importing chainlit
-# To enable persistence: Set CHAINLIT_DATABASE_URL to your PostgreSQL connection string
-# To disable persistence: Leave CHAINLIT_DATABASE_URL empty (default for POC)
-# If persistence is enabled, run: ./scripts/create_chainlit_schema.sh [database_name]
+# Chainlit persistence is ENABLED by default - uses same database as knowledge base
+# To disable: Set CHAINLIT_DATABASE_URL="" in .env
 import os
-# Default: Disable data layer for POC (set CHAINLIT_DATABASE_URL in .env to enable)
+
+# Enable Chainlit persistence by default (uses same database as knowledge base)
 if "CHAINLIT_DATABASE_URL" not in os.environ:
-    os.environ["CHAINLIT_DATABASE_URL"] = ""
+    # Construct CHAINLIT_DATABASE_URL from DATABASE_URL or POSTGRES_* vars
+    database_url = os.getenv("DATABASE_URL")
+    
+    if database_url:
+        # Use same database as knowledge base
+        os.environ["CHAINLIT_DATABASE_URL"] = database_url
+        print("✅ Chainlit persistence enabled (using DATABASE_URL)")
+    else:
+        # Try to construct from POSTGRES_* vars
+        postgres_host = os.getenv("POSTGRES_HOST")
+        postgres_port = os.getenv("POSTGRES_PORT", "5432")
+        postgres_db = os.getenv("POSTGRES_DB", "knowledge_base")
+        postgres_user = os.getenv("POSTGRES_USER")
+        postgres_password = os.getenv("POSTGRES_PASSWORD")
+        
+        if postgres_host and postgres_user:
+            # Construct PostgreSQL URL
+            if postgres_password:
+                chainlit_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+            else:
+                chainlit_url = f"postgresql://{postgres_user}@{postgres_host}:{postgres_port}/{postgres_db}"
+            os.environ["CHAINLIT_DATABASE_URL"] = chainlit_url
+            print(f"✅ Chainlit persistence enabled (using POSTGRES_* vars → {postgres_db})")
+        else:
+            # No database config found - disable persistence
+            os.environ["CHAINLIT_DATABASE_URL"] = ""
+            print("⚠️  Chainlit persistence DISABLED (no database configuration found)")
+            print("   Set DATABASE_URL or POSTGRES_* vars in .env to enable conversation history")
+
 # Note: DATABASE_URL is used for knowledge base, CHAINLIT_DATABASE_URL is for Chainlit persistence
+# They can point to the same database (recommended) or different databases
+# If you see "relation 'thread' does not exist" errors, run: ./scripts/create_chainlit_schema.sh [database_name]
 
 # Enable Guardian tools by default for Chainlit UI
 # Force enable unless explicitly disabled in .env
@@ -63,59 +93,42 @@ else:
     # User explicitly disabled it - respect that
     os.environ["GUARDIAN_TOOLS_ENABLED"] = "false"
 
+# Check AWS SSO authentication for portfolio pacing tool
+# This is required for Redshift database connections
+import subprocess
+import sys
+try:
+    result = subprocess.run(
+        ['aws', 'sts', 'get-caller-identity', '--profile', 'bedrock'],
+        capture_output=True,
+        text=True,
+        timeout=5
+    )
+    if result.returncode == 0:
+        print("✅ AWS SSO authentication verified (bedrock profile)")
+    else:
+        print("⚠️  AWS SSO authentication required for portfolio pacing tool")
+        print("   Run: aws sso login --profile bedrock")
+        print("   Portfolio pacing queries may fail without AWS SSO credentials")
+except FileNotFoundError:
+    print("⚠️  AWS CLI not found. Portfolio pacing tool requires AWS SSO authentication.")
+except subprocess.TimeoutExpired:
+    print("⚠️  AWS SSO check timed out. Portfolio pacing queries may fail.")
+except Exception as e:
+    print(f"⚠️  AWS SSO check failed: {e}. Portfolio pacing queries may fail.")
+
 # NOW import chainlit and other modules
 import chainlit as cl
 import logging
 from langchain_core.messages import HumanMessage
 
-# Aggressively suppress Chainlit data layer errors and warnings
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="chainlit.data")
-warnings.filterwarnings("ignore", category=UserWarning, module="chainlit")
-
-# Custom logging filter to suppress Chainlit database errors
-class ChainlitDatabaseErrorFilter(logging.Filter):
-    """Filter out Chainlit database errors when persistence is disabled."""
-    def filter(self, record):
-        msg = str(record.getMessage())
-        # Suppress "Thread" table errors (various formats)
-        if 'relation "Thread" does not exist' in msg or 'relation \'Thread\' does not exist' in msg:
-            return False
-        if 'UndefinedTableError' in msg:
-            return False
-        # Suppress ChainlitDataLayer errors
-        if 'ChainlitDataLayer' in msg:
-            if any(keyword in msg for keyword in ['does not exist', 'UndefinedTableError', 'create_step', 'update_step']):
-                return False
-        # Suppress "Task exception was never retrieved" for Chainlit data layer
-        if 'Task exception was never retrieved' in msg:
-            if 'ChainlitDataLayer' in msg or 'chainlit.data' in msg or 'chainlit/data' in msg:
-                return False
-        # Suppress "Database error" messages related to Thread table
-        if 'Database error' in msg and ('Thread' in msg or 'UndefinedTableError' in msg):
-            return False
-        # Suppress "Error updating thread" or "Error while flushing" for Thread errors
-        if any(phrase in msg for phrase in ['Error updating thread', 'Error while flushing']):
-            if 'Thread' in msg or 'does not exist' in msg:
-                return False
-        return True
-
-# Apply filter to root logger (catches all loggers)
-_chainlit_db_filter = ChainlitDatabaseErrorFilter()
-logging.getLogger().addFilter(_chainlit_db_filter)
-
-# Also suppress at module level for chainlit.data and asyncpg
-logging.getLogger("chainlit.data").setLevel(logging.CRITICAL)
-logging.getLogger("chainlit.data.chainlit_data_layer").setLevel(logging.CRITICAL)
-logging.getLogger("chainlit.data.utils").setLevel(logging.CRITICAL)
-logging.getLogger("asyncpg").setLevel(logging.ERROR)  # Only show actual errors, not missing table warnings
-
-# Suppress "Database error" messages from our own logger if they're Chainlit-related
-logging.getLogger("__main__").addFilter(_chainlit_db_filter)
-
-# Note: Some asyncio tracebacks may still appear in stderr (from Python's default exception handler)
-# These are harmless - Chainlit works fine without persistence. The logging filter above
-# suppresses all logged errors. Tracebacks are printed directly by asyncio and bypass logging.
+# Chainlit persistence is now ENABLED by default
+# Conversation history will be saved to the database automatically
+# 
+# If you see "relation 'thread' does not exist" errors on startup:
+#   1. Run: ./scripts/create_chainlit_schema.sh [database_name]
+#   2. This creates the required tables: thread, step, user, element, feedback
+#   3. Restart Chainlit - errors will disappear and conversations will be saved
 
 from src.interface.chainlit.graph_factory import create_chainlit_graph
 
@@ -123,11 +136,13 @@ logger = logging.getLogger(__name__)
 
 # Node name constants
 SUPERVISOR_NODE = "supervisor"
+ORCHESTRATOR_NODE = "supervisor"  # Supervisor is the orchestrator
 SUB_AGENTS = ["guardian", "specialist", "optimizer", "pathfinder", "canary"]
 SEMANTIC_SEARCH_NODE = "semantic_search"
 
 # Agent emoji mapping
 AGENT_EMOJIS = {
+    "supervisor": "🧠",
     "guardian": "🛡️",
     "specialist": "🔧",
     "optimizer": "🎯",
@@ -135,6 +150,40 @@ AGENT_EMOJIS = {
     "canary": "🐤",
     "semantic_search": "🔍"
 }
+
+# Agent display names (for chat bubbles) - use ASCII names for avatars (emojis are in SVG files)
+AGENT_DISPLAY_NAMES = {
+    "supervisor": "Orchestrator",
+    "guardian": "Guardian",
+    "specialist": "Specialist",
+    "optimizer": "Optimizer",
+    "pathfinder": "Pathfinder",
+    "canary": "Canary",
+    "semantic_search": "Semantic Search"
+}
+
+
+@cl.set_starters
+async def set_starters():
+    """Define starter buttons for common actions."""
+    return [
+        cl.Starter(
+            label="Team Introduction",
+            message="Have all your agents say hi and explain their roles.",
+        ),
+        cl.Starter(
+            label="Portfolio Health",
+            message="How is my portfolio pacing right now?",
+        ),
+        cl.Starter(
+            label="Knowledge Base",
+            message="What are 'Supply Deals' in the Bedrock platform?",
+        ),
+        cl.Starter(
+            label="Optimization",
+            message="How can I optimize my bid strategy for better ROAS?",
+        )
+    ]
 
 
 @cl.on_chat_start
@@ -149,18 +198,49 @@ async def start():
         cl.user_session.set("graph", graph)
         cl.user_session.set("history", [])
         cl.user_session.set("context_id", context_id)
-        cl.user_session.set("active_steps", {})
+        cl.user_session.set("active_messages", {})  # Changed from active_steps
         
-        await cl.Message(
-            content="👋 **Bedrock Orchestrator Online.**\n\n"
-                   "I can analyze portfolios, troubleshoot issues, and optimize campaigns. "
-                   "How can I help?"
-        ).send()
+        # Register avatars using PNG files in public/ directory
+        # Note: The name here must match the 'author' name in cl.Message EXACTLY
+        # Fallback to corporate logo ensures NO pink Chainlit icons ever appear
+        agent_names = [
+            "Orchestrator",
+            "Guardian",
+            "Specialist",
+            "Optimizer",
+            "Pathfinder",
+            "Canary",
+            "System"  # Used for "Calling..." status messages
+        ]
+        
+        for name in agent_names:
+            # Convert "Guardian" -> "guardian.png"
+            filename = f"{name.lower()}.png"
+            avatar_path = f"public/{filename}"
+            
+            # Fallback logic: If specific agent PNG doesn't exist, use corporate logo
+            # This ensures EVERY author has an avatar (no pink icons!)
+            import os
+            if not os.path.exists(avatar_path):
+                avatar_path = "public/logo_dark.png"  # Corporate "B" logo as fallback
+                logger.debug(f"Using corporate logo for {name} (specific avatar not found)")
+            
+            try:
+                await cl.Avatar(
+                    name=name,
+                    path=avatar_path
+                ).send()
+            except Exception as e:
+                logger.debug(f"Failed to register avatar for {name}: {e}")
+                # Continue - system will use default icon as fallback
+        
+        # NOTE: No welcome message - this keeps the chat 'empty' so Starter buttons stay visible
     except Exception as e:
         logger.error(f"Failed to initialize Chainlit session: {e}", exc_info=True)
         await cl.Message(
             content=f"❌ **Error initializing orchestrator:** {str(e)}\n\n"
-                   "Please check your configuration and try again."
+                   "Please check your configuration and try again.",
+            author="System"
         ).send()
 
 
@@ -171,16 +251,19 @@ async def main(message: cl.Message):
         # 1. Get graph and history from session
         graph = cl.user_session.get("graph")
         if not graph:
-            await cl.Message(content="❌ Graph not initialized. Please refresh the page.").send()
+            await cl.Message(
+                content="❌ Graph not initialized. Please refresh the page.",
+                author="System"
+            ).send()
             return
         
         history = cl.user_session.get("history", [])
         context_id = cl.user_session.get("context_id", "bedrock_kb")
-        active_steps = cl.user_session.get("active_steps", {})
+        active_messages = cl.user_session.get("active_messages", {})
         
-        # Clear active steps for new message
-        active_steps.clear()
-        cl.user_session.set("active_steps", active_steps)
+        # Clear active messages for new turn (each agent gets a fresh message bubble)
+        active_messages.clear()
+        cl.user_session.set("active_messages", active_messages)
         
         # 2. Prepare initial state for graph
         initial_state = {
@@ -192,87 +275,104 @@ async def main(message: cl.Message):
             "user_question": message.content
         }
         
-        # 3. Start the Supervisor's Main Message (empty at first)
-        main_msg = cl.Message(content="")
-        await main_msg.send()
-        
-        # 4. Stream graph events
+        # 3. Stream graph events - create messages on-demand as agents speak
         try:
             async for event in graph.astream_events(initial_state, version="v1"):
                 event_type = event.get("event")
                 node_name = event.get("metadata", {}).get("langgraph_node", "")
                 
-                # --- SUB-AGENT ACTIVITY (Expandable Steps) ---
-                if node_name in SUB_AGENTS:
-                    await _handle_sub_agent_event(
-                        event_type, event, node_name, active_steps
+                # Check if this event comes from a known agent (Orchestrator OR Sub-agents)
+                if node_name in SUB_AGENTS or node_name == SUPERVISOR_NODE:
+                    await _handle_agent_message_event(
+                        event_type, event, node_name, active_messages
                     )
                 
-                # --- SEMANTIC SEARCH (Expandable Step) ---
+                # --- SEMANTIC SEARCH (Keep as step, nested under orchestrator message) ---
                 elif node_name == SEMANTIC_SEARCH_NODE:
+                    # Find the orchestrator's active message to nest the step under it
+                    orchestrator_msg = active_messages.get(SUPERVISOR_NODE)
                     await _handle_semantic_search_event(
-                        event_type, event, active_steps
-                    )
-                
-                # --- SUPERVISOR ACTIVITY (Main Chat) ---
-                elif node_name == SUPERVISOR_NODE:
-                    await _handle_supervisor_event(
-                        event_type, event, main_msg
+                        event_type, event, orchestrator_msg
                     )
         
         except Exception as e:
             logger.error(f"Error during event streaming: {e}", exc_info=True)
             await cl.Message(
-                content=f"❌ **Error during execution:** {str(e)}"
+                content=f"❌ **Error during execution:** {str(e)}",
+                author="System"
             ).send()
             return
         
-        # 5. Finalize main message
-        await main_msg.update()
+        # 4. Finalize all active messages
+        for msg in active_messages.values():
+            if msg:
+                await msg.update()
         
-        # 6. Update history for next turn
+        # 5. Update history for next turn
         history.append(HumanMessage(content=message.content))
         cl.user_session.set("history", history)
-        cl.user_session.set("active_steps", active_steps)
+        cl.user_session.set("active_messages", active_messages)
         
     except Exception as e:
         logger.error(f"Error during Chainlit message handling: {e}", exc_info=True)
         await cl.Message(
-            content=f"❌ **Error during execution:** {str(e)}"
+            content=f"❌ **Error during execution:** {str(e)}",
+            author="System"
         ).send()
 
 
-async def _handle_sub_agent_event(event_type, event, node_name, active_steps):
-    """Handle events from sub-agents (Guardian, Specialist, etc.)."""
+async def _handle_agent_message_event(event_type, event, node_name, active_messages):
+    """Handle events from agents (Orchestrator, Guardian, Specialist, etc.) - creates chat bubbles."""
     emoji = AGENT_EMOJIS.get(node_name, "🤖")
-    agent_display_name = node_name.title()
+    agent_display_name = AGENT_DISPLAY_NAMES.get(node_name, node_name.title())
     
-    # Helper function to ensure step exists
-    async def _ensure_step_exists():
-        """Create step if it doesn't exist (for direct LLM calls that skip on_chain_start)."""
-        if node_name not in active_steps:
-            step = cl.Step(name=f"{emoji} {agent_display_name} Agent", type="tool")
-            # step.language = "markdown"  # COMMENTED: Causes raw markdown display and horizontal scroll
-            await step.send()
-            active_steps[node_name] = step
+    # Helper function to ensure message exists
+    async def _ensure_message_exists():
+        """Create message bubble if it doesn't exist (for direct LLM calls that skip on_chat_model_start)."""
+        if node_name not in active_messages:
+            msg = cl.Message(
+                content="",
+                author=agent_display_name
+            )
+            await msg.send()
+            active_messages[node_name] = msg
     
-    # Agent starts thinking/acting
-    # Handle BOTH on_chain_start (for tool-calling) AND on_chat_model_start (for direct LLM calls)
-    if event_type == "on_chain_start" or event_type == "on_chat_model_start":
-        await _ensure_step_exists()
-    
-    # Agent streams tokens (typewriter effect)
-    elif event_type == "on_chat_model_stream":
-        # Create step lazily if it doesn't exist (for direct LLM calls that skip on_chain_start)
-        await _ensure_step_exists()
+    # 1. DETECT START OF SPEECH
+    if event_type == "on_chat_model_start":
+        # Skip Orchestrator - it will be created lazily on first token to prevent empty bubbles
+        if node_name == SUPERVISOR_NODE:
+            return  # Don't create empty bubble for Orchestrator when it routes
         
+        # Only create a new bubble if one isn't already open for this node
+        if node_name not in active_messages:
+            # Show "Calling [Agent] Agent..." status for sub-agents
+            if node_name in SUB_AGENTS:
+                # Send a brief status message before the agent responds
+                status_msg = cl.Message(
+                    content=f"📞 Calling {agent_display_name} Agent...",
+                    author="System"
+                )
+                await status_msg.send()
+            
+            msg = cl.Message(
+                content="",
+                author=agent_display_name
+            )
+            await msg.send()
+            active_messages[node_name] = msg
+    
+    # 2. STREAM TOKENS
+    elif event_type == "on_chat_model_stream":
         chunk = event.get("data", {}).get("chunk", {})
+        
+        # Extract content from chunk
+        content = None
         if hasattr(chunk, 'content') and chunk.content:
             # Normalize content to string (chunk.content can be a list in LangChain)
-            content = chunk.content
-            if isinstance(content, list):
+            raw_content = chunk.content
+            if isinstance(raw_content, list):
                 text_parts = []
-                for block in content:
+                for block in raw_content:
                     if isinstance(block, dict):
                         if block.get("type") == "text" and "text" in block:
                             text_parts.append(str(block["text"]))
@@ -281,102 +381,90 @@ async def _handle_sub_agent_event(event_type, event, node_name, active_steps):
                     elif isinstance(block, str):
                         text_parts.append(block)
                 content = " ".join(text_parts).strip()
-            elif not isinstance(content, str):
-                content = str(content) if content else ""
-            
-            if isinstance(content, str) and content:
-                await active_steps[node_name].stream_token(content)
-    
-    # Agent uses a tool (nested in agent step)
-    elif event_type == "on_tool_start":
-        await _ensure_step_exists()
-        tool_name = event.get("name", "unknown_tool")
-        # Hide raw output for portfolio pacing tool
-        if tool_name == "analyze_portfolio_pacing":
-            await active_steps[node_name].stream_token(
-                f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
-            )
+            elif isinstance(raw_content, str):
+                content = raw_content.strip()
+            elif raw_content:
+                content = str(raw_content).strip()
+        
+        # STRICT CHECK: Only create Orchestrator message if we have actual content
+        if node_name == SUPERVISOR_NODE:
+            if content:  # Only act if chunk has text
+                # Create bubble ONLY if we have text AND it doesn't exist
+                if node_name not in active_messages:
+                    msg = cl.Message(
+                        content="",
+                        author=agent_display_name
+                    )
+                    await msg.send()
+                    active_messages[node_name] = msg
+                
+                # Stream the content
+                await active_messages[node_name].stream_token(content)
         else:
-            await active_steps[node_name].stream_token(
-                f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
-            )
+            # Create message lazily for other agents if it doesn't exist
+            await _ensure_message_exists()
+            
+            if node_name in active_messages and content:
+                await active_messages[node_name].stream_token(content)
     
-    # Tool execution completes
+    # 3. HANDLE TOOLS (Show as inline text in agent's message, or as standalone steps)
+    elif event_type == "on_tool_start":
+        await _ensure_message_exists()
+        if node_name in active_messages:
+            tool_name = event.get("name", "unknown_tool")
+            # Show tool execution as inline text in the agent's message
+            # For portfolio pacing, show minimal info (Guardian will format the results)
+            if tool_name == "analyze_portfolio_pacing":
+                await active_messages[node_name].stream_token(
+                    f"\n\n🛠️ *Running portfolio analysis...*\n\n"
+                )
+            else:
+                await active_messages[node_name].stream_token(
+                    f"\n\n🛠️ *Running tool: `{tool_name}`...*\n\n"
+                )
+    
     elif event_type == "on_tool_end":
-        await _ensure_step_exists()
-        tool_name = event.get("name", "unknown_tool")
-        # For portfolio pacing, don't show raw output (Guardian formats it)
-        if tool_name != "analyze_portfolio_pacing":
-            # Show brief completion message for other tools
-            await active_steps[node_name].stream_token(
-                f"*✅ Tool `{tool_name}` completed*\n\n"
-            )
+        await _ensure_message_exists()
+        if node_name in active_messages:
+            tool_name = event.get("name", "unknown_tool")
+            # For portfolio pacing, don't show completion (Guardian formats the results)
+            if tool_name != "analyze_portfolio_pacing":
+                await active_messages[node_name].stream_token(
+                    f"✅ *Tool `{tool_name}` completed*\n\n"
+                )
     
-    # Agent completes
-    elif event_type == "on_chain_end" or event_type == "on_chat_model_end":
-        if node_name in active_steps:
-            # Step will auto-close, or we can explicitly finalize
-            await active_steps[node_name].update()
+    # 4. END OF SPEECH (Commit the message)
+    elif event_type == "on_chat_model_end":
+        if node_name in active_messages:
+            await active_messages[node_name].update()
+            # Keep message in active_messages - don't delete, so user can see full conversation
     
     # Error handling
     elif event_type == "on_chain_error":
-        await _ensure_step_exists()
-        error = event.get("data", {}).get("error", "Unknown error")
-        await active_steps[node_name].stream_token(
-            f"\n\n❌ **Error:** {str(error)}\n\n"
-        )
-        await active_steps[node_name].update()
-
-
-async def _handle_semantic_search_event(event_type, event, active_steps):
-    """Handle semantic search events."""
-    # Show as expandable step for consistency
-    if event_type == "on_chain_start":
-        step = cl.Step(name="🔍 Semantic Search", type="tool")
-        # step.language = "markdown"  # COMMENTED: Causes raw markdown display and horizontal scroll
-        await step.send()
-        active_steps["semantic_search"] = step
-    
-    elif event_type == "on_tool_start":
-        if "semantic_search" in active_steps:
-            # Extract query from event data
-            input_data = event.get("data", {}).get("input", {})
-            query = input_data.get("query", "") if isinstance(input_data, dict) else ""
-            await active_steps["semantic_search"].stream_token(
-                f"*Searching knowledge base for: `{query}`...*\n\n"
-            )
-    
-    elif event_type == "on_tool_end":
-        if "semantic_search" in active_steps:
-            await active_steps["semantic_search"].stream_token(
-                "*✅ Search completed*\n\n"
-            )
-            await active_steps["semantic_search"].update()
-    
-    elif event_type == "on_chain_end":
-        if "semantic_search" in active_steps:
-            await active_steps["semantic_search"].update()
-    
-    elif event_type == "on_chain_error":
-        if "semantic_search" in active_steps:
+        await _ensure_message_exists()
+        if node_name in active_messages:
             error = event.get("data", {}).get("error", "Unknown error")
-            await active_steps["semantic_search"].stream_token(
+            await active_messages[node_name].stream_token(
                 f"\n\n❌ **Error:** {str(error)}\n\n"
             )
-            await active_steps["semantic_search"].update()
+            await active_messages[node_name].update()
 
 
-async def _handle_supervisor_event(event_type, event, main_msg):
-    """Handle supervisor/orchestrator events (main chat)."""
-    # Supervisor streams reasoning or final response
-    if event_type == "on_chat_model_stream":
-        chunk = event.get("data", {}).get("chunk", {})
-        if hasattr(chunk, 'content') and chunk.content:
-            await main_msg.stream_token(chunk.content)
+async def _handle_semantic_search_event(event_type, event, orchestrator_msg):
+    """Handle semantic search events - show as inline text in orchestrator message."""
+    if orchestrator_msg is None:
+        return  # Can't show if no orchestrator message exists
     
-    # Error handling
-    elif event_type == "on_chain_error":
-        error = event.get("data", {}).get("error", "Unknown error")
-        await main_msg.stream_token(
-            f"\n\n❌ **Error:** {str(error)}\n\n"
+    # Show semantic search activity inline in orchestrator's message
+    if event_type == "on_tool_start":
+        # Extract query from event data
+        input_data = event.get("data", {}).get("input", {})
+        query = input_data.get("query", "") if isinstance(input_data, dict) else ""
+        await orchestrator_msg.stream_token(
+            f"\n\n🔍 *Searching knowledge base for: `{query}`...*\n\n"
+        )
+    
+    elif event_type == "on_tool_end":
+        await orchestrator_msg.stream_token(
+            "*✅ Search completed*\n\n"
         )

@@ -88,7 +88,49 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/knowledge_base
 LOG_LEVEL=INFO
 ```
 
-### 4. Running the Application
+### 4. Knowledge Base Ingestion
+
+Before using the application, you need to ingest the knowledge base into the vector database. The knowledge base files are located in the `knowledge-base/` directory.
+
+**Quick Setup (Recommended):**
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Run ingestion script (defaults to ./knowledge-base → bedrock_kb)
+./ingest.sh bedrock_kb
+
+# Or with custom path:
+./ingest.sh --kb-path ./knowledge-base --context-id bedrock_kb
+```
+
+**Manual Setup:**
+```bash
+source venv/bin/activate
+python -m src.ingestion.ingest --kb-path ./knowledge-base --context-id bedrock_kb
+```
+
+**What happens during ingestion:**
+- All `.md` files in `knowledge-base/` are processed
+- Content is chunked by sections (or by size with `--chunk-by-size`)
+- Embeddings are generated using SentenceTransformer (`all-MiniLM-L6-v2`)
+- Chunks are stored in PostgreSQL with pgvector extension
+- Context ID `bedrock_kb` is used to organize chunks
+
+**When to re-ingest:**
+- After adding new markdown files to `knowledge-base/`
+- After modifying existing files (to update the index)
+- When you want to refresh the entire knowledge base
+
+**Verify ingestion:**
+```bash
+# Check chunk count in database
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM knowledge_chunks;"
+```
+
+For more details, see [`USAGE_GUIDE.md`](USAGE_GUIDE.md#2-knowledge-base-ingestion-already-done).
+
+### 5. Running the Application
 
 **Run the Chainlit UI (Recommended):**
 
@@ -98,12 +140,6 @@ source venv/bin/activate
 
 # Run Chainlit
 chainlit run app.py -w
-```
-
-**Run the CLI (For debugging):**
-
-```bash
-python -m src.interface.cli.main --context-id bedrock_kb
 ```
 
 **Run the CLI (For debugging):**

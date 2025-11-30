@@ -86,23 +86,34 @@ reaction_on_message_received = false
 
 [UI]
 # Name of the assistant.
-name = "Assistant"
+name = "Bedrock Orchestrator"
 
-# default_theme = "dark"
+# Default theme (dark like ChatGPT)
+default_theme = "dark"
 
 # layout = "wide"
 
 # default_sidebar_state = "open"
 
 # Description of the assistant. This is used for HTML tags.
-# description = ""
+description = "Agentic DSP Portfolio Manager"
 
 # Chain of Thought (CoT) display mode. Can be "hidden", "tool_call" or "full".
 cot = "full"
 
+# CRITICAL: Prevent content collapsing that breaks natural scrolling
+# Setting to false prevents "See more" buttons that cause layout shifts
+default_collapse_content = false
+
+# Auto-expand messages by default (keeps agent responses visible)
+default_expand_messages = true
+
+# Font family (optional - uncomment to use custom font)
+# font_family = "Inter"
+
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-# custom_css = "/public/test.css"
+custom_css = "/public/custom.css"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""
@@ -131,7 +142,8 @@ alert_style = "classic"
 # custom_meta_image_url = "https://chainlit-cloud.s3.eu-west-3.amazonaws.com/logo/chainlit_banner.png"
 
 # Load assistant logo directly from URL.
-logo_file_url = ""
+# Use /public/ path format (matches custom_css format in this config)
+logo_file_url = "/public/logo_dark.png"
 
 # Load assistant avatar image directly from URL.
 default_avatar_file_url = ""
@@ -148,6 +160,9 @@ default_avatar_file_url = ""
 #     icon_url = "https://avatars.githubusercontent.com/u/128686189?s=200&v=4"
 #     url = "https://github.com/Chainlit/chainlit/issues"
 #     target = "_blank" (default)  # Optional: "_self", "_parent", "_top".
+
+# Theme customization is done via public/theme.json file
+# See public/theme.json for color configuration
 
 [meta]
 generated_by = "2.9.2"

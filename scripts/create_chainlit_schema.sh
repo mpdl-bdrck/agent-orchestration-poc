@@ -16,7 +16,15 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 # Check if DATABASE_URL is set (takes precedence)
 if [ -n "$DATABASE_URL" ]; then
     echo "Using DATABASE_URL for connection..."
-    PGPASSWORD="${POSTGRES_PASSWORD}" psql "$DATABASE_URL" -f scripts/create_chainlit_schema.sql
+    # Extract database name from URL if not provided as argument
+    if [ -z "$1" ]; then
+        # Try to extract database name from DATABASE_URL
+        DB_NAME=$(echo "$DATABASE_URL" | sed -n 's/.*\/\([^\/]*\)$/\1/p' | sed 's/?.*//')
+        if [ -n "$DB_NAME" ]; then
+            echo "Detected database name from DATABASE_URL: $DB_NAME"
+        fi
+    fi
+    psql "$DATABASE_URL" -f scripts/create_chainlit_schema.sql
 else
     # Use individual POSTGRES_* variables
     echo "Creating Chainlit schema in database: $DB_NAME"

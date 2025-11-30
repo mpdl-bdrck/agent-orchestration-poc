@@ -1,0 +1,26 @@
+/* Custom CSS for Chainlit UI - Logo Centering */
+
+/* Center the logo horizontally in the header */
+/* Logo is now 50% bigger in the actual image file, just need to center it */
+header img[src*="logo"],
+header img[alt*="logo"],
+.chainlit-logo img,
+.logo img,
+[class*="logo"] img,
+img[src="/public/logo_dark.png"],
+img[src="/logo_dark.png"],
+img[src*="logo_dark"],
+img[src*="logo_light"] {
+    display: block !important;
+    margin: 0 auto !important; /* Center horizontally */
+    max-width: 100% !important;
+}
+
+/* Ensure logo container centers content */
+header,
+.logo-container,
+.chainlit-logo {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
