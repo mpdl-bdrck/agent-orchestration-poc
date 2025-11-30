@@ -26,7 +26,8 @@ python-dotenv>=1.0.0
 # CLI & Display
 rich>=13.0.0  # For terminal formatting and "glass box" output
 colorama>=0.4.6  # For cross-platform colors
-chainlit>=1.0.0  # For web UI
+chainlit>=1.0.0
+asyncpg>=0.29.0  # Required by Chainlit for data layer functionality  # For web UI
 
 # Utilities
 pydantic>=2.0.0  # For data validation

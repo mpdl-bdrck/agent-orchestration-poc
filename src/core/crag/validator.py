@@ -49,6 +49,7 @@ class CRAGValidator:
             ChatAnthropic = None
             
         from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_google_genai import HarmCategory, HarmBlockThreshold
 
         if self.provider == "openai":
             if ChatOpenAI is None:
@@ -97,7 +98,13 @@ class CRAGValidator:
                 model=model,
                 temperature=0.1,
                 max_tokens=500,
-                google_api_key=api_key
+                google_api_key=api_key,
+                safety_settings={
+                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                }
             )
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
@@ -249,20 +256,36 @@ SCORE: [0.0-1.0]
 REASONING: [2-3 sentences explaining the score]"""
 
         try:
-            # Use LLM to grade
+            # Use LLM to grade (use invoke, not stream, to avoid streaming issues)
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt)
             ]
 
+            # Ensure we're using invoke (not stream) to avoid "No generations found in stream" errors
             response = self.grader_llm.invoke(messages)
-            response_text = response.content if hasattr(response, 'content') else str(response)
+            
+            # Handle different response types
+            if hasattr(response, 'content'):
+                response_text = response.content
+            elif isinstance(response, str):
+                response_text = response
+            else:
+                # Try to extract content from response object
+                response_text = str(response)
+                if hasattr(response, 'text'):
+                    response_text = response.text
+                elif hasattr(response, 'message'):
+                    if hasattr(response.message, 'content'):
+                        response_text = response.message.content
+                    else:
+                        response_text = str(response.message)
 
             # Parse the response
             return self._parse_grade_response(response_text)
 
         except Exception as e:
-            logger.error(f"Error grading chunk relevance: {e}")
+            logger.error(f"Error grading chunk relevance: {e}", exc_info=True)
             # Return neutral score on error
             return {
                 'score': 0.5,

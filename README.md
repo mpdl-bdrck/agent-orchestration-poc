@@ -51,18 +51,31 @@ graph TD
 
 ### 1. Prerequisites
 
-  - Python 3.10+ (Python 3.14+ requires compatibility fixes - see below)
+  - **Python 3.13** (Recommended - fully compatible with Chainlit)
+  - Python 3.10-3.12 also supported
+  - ⚠️ **Python 3.14+ NOT recommended** - Chainlit has compatibility issues
   - PostgreSQL with `pgvector` extension installed.
   - Google Gemini API Key (Verified for `gemini-2.5-flash`).
 
 ### 2. Installation
 
+**Quick Setup (Python 3.13):**
+
+```bash
+# Run the setup script (creates venv and installs dependencies)
+./setup_python313.sh
+
+# Or manually:
+python3.13 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Manual Installation:**
+
 ```bash
 # Clone and install dependencies
 pip install -r requirements.txt
-
-# For Chainlit UI support (Python 3.14+)
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install chainlit
 ```
 
 ### 3. Configuration
@@ -80,14 +93,18 @@ LOG_LEVEL=INFO
 **Run the Chainlit UI (Recommended):**
 
 ```bash
-# IMPORTANT: For Python 3.14+, you MUST use the wrapper script:
-python run_chainlit.py
+# Activate virtual environment
+source venv/bin/activate
 
-# For Python 3.13 and below, you can use:
+# Run Chainlit
 chainlit run app.py -w
 ```
 
-**⚠️ Python 3.14+ Users**: The `run_chainlit.py` wrapper script is REQUIRED. Running `chainlit run app.py` directly will fail with async context errors.
+**Run the CLI (For debugging):**
+
+```bash
+python -m src.interface.cli.main --context-id bedrock_kb
+```
 
 **Run the CLI (For debugging):**
 
@@ -130,11 +147,11 @@ src/
 
 **Fix:** Ensure all agents return to the Supervisor and use the standard execution wrapper.
 
-**Issue:** Chainlit async context error (Python 3.14+)
+**Issue:** Chainlit async context errors (Python 3.14+)
 
-**Cause:** `sniffio` can't detect async library in Python 3.14.
+**Cause:** Python 3.14 has compatibility issues with Chainlit's async dependencies (`anyio`, `sniffio`).
 
-**Fix:** Use `python run_chainlit.py` wrapper script which patches `sniffio` automatically.
+**Fix:** Use Python 3.13 instead. Run `./setup_python313.sh` to set up a compatible environment.
 
 ## 📚 Documentation
 

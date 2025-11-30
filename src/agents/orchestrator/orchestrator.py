@@ -373,21 +373,46 @@ Route to appropriate agent or use FINISH if no agents needed."""
                     return ""
             elif messages:
                 # Extract from messages if no agent_responses
-                # BUT: Check if messages contain agent responses that were already streamed
-                # If so, return empty string to prevent duplicate display
-                logger.warning(f"⚠️ Orchestrator: No agent_responses, falling back to messages. This should NOT happen if Guardian responded!")
+                # This happens when semantic_search was used (results are in messages, not agent_responses)
+                logger.info(f"🔍 Orchestrator: No agent_responses, checking messages for semantic_search results...")
+                
+                # Look for semantic_search results in messages (they're AIMessage instances)
+                from langchain_core.messages import AIMessage
+                semantic_results = []
+                for msg in messages:
+                    if isinstance(msg, AIMessage) and msg.content:
+                        # This is likely a semantic_search result
+                        semantic_results.append(msg.content)
+                
+                if semantic_results:
+                    # We have semantic search results - synthesize them into a response
+                    logger.info(f"✅ Orchestrator: Found {len(semantic_results)} semantic_search results, synthesizing...")
+                    search_context = "\n\n".join(semantic_results[:3])  # Use top 3 results
+                    synthesis_prompt = f"""The user asked: {question}
+
+I searched the knowledge base and found the following relevant information:
+
+{search_context}
+
+Please provide a clear, helpful answer based on this knowledge base information. If the information doesn't fully answer the question, say so."""
+                    
+                    try:
+                        synthesis_messages = [
+                            SystemMessage(content="You are a helpful assistant answering questions based on knowledge base search results."),
+                            HumanMessage(content=synthesis_prompt)
+                        ]
+                        response = self.llm.invoke(synthesis_messages)
+                        return response.content if hasattr(response, 'content') else str(response)
+                    except Exception as e:
+                        logger.error(f"Failed to synthesize semantic_search results: {e}")
+                        # Fallback: return the first search result
+                        return semantic_results[0] if semantic_results else "No response available."
+                
+                # Fallback: use last message if no semantic results found
                 last_message = messages[-1]
                 if hasattr(last_message, 'content'):
-                    # Check if this message is from an agent that already responded via streaming
-                    # If agent_responses is empty but messages exist, it might be an orchestrator response
-                    # Filter out orchestrator responses that duplicate agent responses
                     message_content = last_message.content
-                    # If we have agent_responses, don't use messages (they're duplicates)
-                    if agent_responses:
-                        # Agent already responded via streaming - return empty
-                        logger.warning("⚠️ Orchestrator: Agent responses exist but also messages exist - ignoring messages to prevent duplicate")
-                        return ""
-                    logger.warning(f"⚠️ Orchestrator: Returning message content (no agent_responses): {message_content[:100]}...")
+                    logger.info(f"⚠️ Orchestrator: Returning message content (no agent_responses, no semantic_search): {message_content[:100]}...")
                     return message_content
                 return str(last_message)
             else:

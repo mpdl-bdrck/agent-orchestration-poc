@@ -159,14 +159,19 @@ unless portfolio data is explicitly needed for the response.
         # 3. Change default below from 'false' to 'true' if desired
         
         # Feature flag: Check environment variable first, then config
-        tools_enabled = os.getenv('GUARDIAN_TOOLS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+        env_value = os.getenv('GUARDIAN_TOOLS_ENABLED', 'false')
+        tools_enabled = env_value.lower() in ('true', '1', 'yes')
+        
+        # Debug logging
+        logger.debug(f"🔍 Guardian _load_tools: GUARDIAN_TOOLS_ENABLED={env_value}, tools_enabled={tools_enabled}")
         
         # Also check config file if available
         if hasattr(self.config, 'tools_enabled'):
             tools_enabled = self.config.tools_enabled
+            logger.debug(f"🔍 Guardian _load_tools: Overridden by config.tools_enabled={tools_enabled}")
         
         if not tools_enabled:
-            logger.info("⚠️  Guardian tools DISABLED (default). Set GUARDIAN_TOOLS_ENABLED=true to enable.")
+            logger.warning(f"⚠️  Guardian tools DISABLED. GUARDIAN_TOOLS_ENABLED={env_value}. Set GUARDIAN_TOOLS_ENABLED=true to enable.")
             return []
         
         # Tool loading code - enabled when feature flag is true

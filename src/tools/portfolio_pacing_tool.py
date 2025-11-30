@@ -663,11 +663,11 @@ def analyze_portfolio_pacing(
                 client_config=client_config
             )
             logger.info("✅ Portfolio analysis completed successfully")
-                return formatted_output
+            return formatted_output
                 
-            except Exception as e:
+        except Exception as e:
             logger.error(f"Error running portfolio analysis: {e}", exc_info=True)
-                raise Exception(f"Portfolio analysis failed: {str(e)}")
+            raise Exception(f"Portfolio analysis failed: {str(e)}")
         
     except Exception as e:
         logger.error(f"Portfolio pacing tool error: {e}", exc_info=True)

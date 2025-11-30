@@ -220,10 +220,37 @@ Agents called: {', '.join(agents_called) if agents_called else 'none'}""")
                 logger.warning(f"⚠️ Supervisor: Generating orchestrator response - NO agents have responded yet. agent_responses={len(agent_responses)}, actual_agent_responses={len(actual_agent_responses)}")
                 response_system_prompt = orchestrator_prompt if orchestrator_prompt else system_prompt
                 
+                # Check for semantic_search results in messages before generating response
+                messages = state.get("messages", [])
+                from langchain_core.messages import AIMessage
+                
+                semantic_results = []
+                for msg in messages:
+                    if isinstance(msg, AIMessage) and msg.content:
+                        # Check if this looks like semantic_search results (formatted with markdown or long content)
+                        # Semantic search results are formatted with **title** and content
+                        if "**" in msg.content or len(msg.content) > 100:
+                            semantic_results.append(msg.content)
+                
                 # Generate actual response for simple questions
                 # IMPORTANT: Do NOT include agent responses in the prompt - this prevents echoing
-                # Also, do NOT include messages that might contain agent responses
-                response_prompt = f"""Based on the user's question and your routing decision, provide a helpful, direct answer.
+                # But DO include semantic_search results if they exist
+                if semantic_results:
+                    # Include semantic_search results in the prompt
+                    search_context = "\n\n".join(semantic_results[:3])  # Use top 3 results
+                    logger.info(f"✅ Supervisor: Found {len(semantic_results)} semantic_search results, including in orchestrator response")
+                    response_prompt = f"""Based on the user's question and the knowledge base search results, provide a helpful, direct answer.
+
+User question: {user_message}
+Your reasoning: {decision.reasoning}
+
+Knowledge base search results:
+{search_context}
+
+Provide a clear, concise answer based on the knowledge base information above. If the information doesn't fully answer the question, say so. Do NOT repeat or echo any agent responses."""
+                else:
+                    # Original prompt (no semantic_search results)
+                    response_prompt = f"""Based on the user's question and your routing decision, provide a helpful, direct answer.
 
 User question: {user_message}
 Your reasoning: {decision.reasoning}

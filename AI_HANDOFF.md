@@ -517,7 +517,7 @@ tool_result = tool_func.invoke(normalized_args)
 
 **Decision**: ALL decisions come from LLM reasoning guided by prompts. NO hardcoded logic.
 
-**Implementation**:
+**Implementation**: 
 - Tool descriptions include "WHEN NOT TO USE"
 - Supervisor instructions injected via XML tags
 - System prompts guide LLM behavior
@@ -533,7 +533,7 @@ tool_result = tool_func.invoke(normalized_args)
 
 **Decision**: Tools/services add results to `messages`, NOT `agent_responses`. `agent_responses` is semantically for agents only.
 
-**Implementation**:
+**Implementation**: 
 - `semantic_search` only adds to `messages`
 - Supervisor detects `semantic_search` results in `messages`
 - Hardcoded loop prevention for tools

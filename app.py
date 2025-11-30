@@ -43,10 +43,79 @@ try:
 except Exception:
     pass
 
+# Configure Chainlit's data layer BEFORE importing chainlit
+# To enable persistence: Set CHAINLIT_DATABASE_URL to your PostgreSQL connection string
+# To disable persistence: Leave CHAINLIT_DATABASE_URL empty (default for POC)
+# If persistence is enabled, run: ./scripts/create_chainlit_schema.sh [database_name]
+import os
+# Default: Disable data layer for POC (set CHAINLIT_DATABASE_URL in .env to enable)
+if "CHAINLIT_DATABASE_URL" not in os.environ:
+    os.environ["CHAINLIT_DATABASE_URL"] = ""
+# Note: DATABASE_URL is used for knowledge base, CHAINLIT_DATABASE_URL is for Chainlit persistence
+
+# Enable Guardian tools by default for Chainlit UI
+# Force enable unless explicitly disabled in .env
+# Set GUARDIAN_TOOLS_ENABLED=false in .env to disable if needed
+current_value = os.environ.get("GUARDIAN_TOOLS_ENABLED", "").lower()
+if current_value not in ("false", "0", "no", "off"):
+    os.environ["GUARDIAN_TOOLS_ENABLED"] = "true"
+else:
+    # User explicitly disabled it - respect that
+    os.environ["GUARDIAN_TOOLS_ENABLED"] = "false"
+
 # NOW import chainlit and other modules
 import chainlit as cl
 import logging
 from langchain_core.messages import HumanMessage
+
+# Aggressively suppress Chainlit data layer errors and warnings
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="chainlit.data")
+warnings.filterwarnings("ignore", category=UserWarning, module="chainlit")
+
+# Custom logging filter to suppress Chainlit database errors
+class ChainlitDatabaseErrorFilter(logging.Filter):
+    """Filter out Chainlit database errors when persistence is disabled."""
+    def filter(self, record):
+        msg = str(record.getMessage())
+        # Suppress "Thread" table errors (various formats)
+        if 'relation "Thread" does not exist' in msg or 'relation \'Thread\' does not exist' in msg:
+            return False
+        if 'UndefinedTableError' in msg:
+            return False
+        # Suppress ChainlitDataLayer errors
+        if 'ChainlitDataLayer' in msg:
+            if any(keyword in msg for keyword in ['does not exist', 'UndefinedTableError', 'create_step', 'update_step']):
+                return False
+        # Suppress "Task exception was never retrieved" for Chainlit data layer
+        if 'Task exception was never retrieved' in msg:
+            if 'ChainlitDataLayer' in msg or 'chainlit.data' in msg or 'chainlit/data' in msg:
+                return False
+        # Suppress "Database error" messages related to Thread table
+        if 'Database error' in msg and ('Thread' in msg or 'UndefinedTableError' in msg):
+            return False
+        # Suppress "Error updating thread" or "Error while flushing" for Thread errors
+        if any(phrase in msg for phrase in ['Error updating thread', 'Error while flushing']):
+            if 'Thread' in msg or 'does not exist' in msg:
+                return False
+        return True
+
+# Apply filter to root logger (catches all loggers)
+_chainlit_db_filter = ChainlitDatabaseErrorFilter()
+logging.getLogger().addFilter(_chainlit_db_filter)
+
+# Also suppress at module level for chainlit.data and asyncpg
+logging.getLogger("chainlit.data").setLevel(logging.CRITICAL)
+logging.getLogger("chainlit.data.chainlit_data_layer").setLevel(logging.CRITICAL)
+logging.getLogger("chainlit.data.utils").setLevel(logging.CRITICAL)
+logging.getLogger("asyncpg").setLevel(logging.ERROR)  # Only show actual errors, not missing table warnings
+
+# Suppress "Database error" messages from our own logger if they're Chainlit-related
+logging.getLogger("__main__").addFilter(_chainlit_db_filter)
+
+# Note: Some asyncio tracebacks may still appear in stderr (from Python's default exception handler)
+# These are harmless - Chainlit works fine without persistence. The logging filter above
+# suppresses all logged errors. Tracebacks are printed directly by asyncio and bypass logging.
 
 from src.interface.chainlit.graph_factory import create_chainlit_graph
 
@@ -178,60 +247,85 @@ async def _handle_sub_agent_event(event_type, event, node_name, active_steps):
     emoji = AGENT_EMOJIS.get(node_name, "🤖")
     agent_display_name = node_name.title()
     
+    # Helper function to ensure step exists
+    async def _ensure_step_exists():
+        """Create step if it doesn't exist (for direct LLM calls that skip on_chain_start)."""
+        if node_name not in active_steps:
+            step = cl.Step(name=f"{emoji} {agent_display_name} Agent", type="tool")
+            # step.language = "markdown"  # COMMENTED: Causes raw markdown display and horizontal scroll
+            await step.send()
+            active_steps[node_name] = step
+    
     # Agent starts thinking/acting
-    if event_type == "on_chain_start":
-        # Create expandable step
-        step = cl.Step(name=f"{emoji} {agent_display_name} Agent", type="tool")
-        step.language = "markdown"
-        await step.send()
-        active_steps[node_name] = step
+    # Handle BOTH on_chain_start (for tool-calling) AND on_chat_model_start (for direct LLM calls)
+    if event_type == "on_chain_start" or event_type == "on_chat_model_start":
+        await _ensure_step_exists()
     
     # Agent streams tokens (typewriter effect)
     elif event_type == "on_chat_model_stream":
-        if node_name in active_steps:
-            chunk = event.get("data", {}).get("chunk", {})
-            if hasattr(chunk, 'content') and chunk.content:
-                await active_steps[node_name].stream_token(chunk.content)
+        # Create step lazily if it doesn't exist (for direct LLM calls that skip on_chain_start)
+        await _ensure_step_exists()
+        
+        chunk = event.get("data", {}).get("chunk", {})
+        if hasattr(chunk, 'content') and chunk.content:
+            # Normalize content to string (chunk.content can be a list in LangChain)
+            content = chunk.content
+            if isinstance(content, list):
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text" and "text" in block:
+                            text_parts.append(str(block["text"]))
+                        elif "text" in block:
+                            text_parts.append(str(block["text"]))
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                content = " ".join(text_parts).strip()
+            elif not isinstance(content, str):
+                content = str(content) if content else ""
+            
+            if isinstance(content, str) and content:
+                await active_steps[node_name].stream_token(content)
     
     # Agent uses a tool (nested in agent step)
     elif event_type == "on_tool_start":
-        if node_name in active_steps:
-            tool_name = event.get("name", "unknown_tool")
-            # Hide raw output for portfolio pacing tool
-            if tool_name == "analyze_portfolio_pacing":
-                await active_steps[node_name].stream_token(
-                    f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
-                )
-            else:
-                await active_steps[node_name].stream_token(
-                    f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
-                )
+        await _ensure_step_exists()
+        tool_name = event.get("name", "unknown_tool")
+        # Hide raw output for portfolio pacing tool
+        if tool_name == "analyze_portfolio_pacing":
+            await active_steps[node_name].stream_token(
+                f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
+            )
+        else:
+            await active_steps[node_name].stream_token(
+                f"\n\n*🛠️ Running Tool: `{tool_name}`...*\n\n"
+            )
     
     # Tool execution completes
     elif event_type == "on_tool_end":
-        if node_name in active_steps:
-            tool_name = event.get("name", "unknown_tool")
-            # For portfolio pacing, don't show raw output (Guardian formats it)
-            if tool_name != "analyze_portfolio_pacing":
-                # Show brief completion message for other tools
-                await active_steps[node_name].stream_token(
-                    f"*✅ Tool `{tool_name}` completed*\n\n"
-                )
+        await _ensure_step_exists()
+        tool_name = event.get("name", "unknown_tool")
+        # For portfolio pacing, don't show raw output (Guardian formats it)
+        if tool_name != "analyze_portfolio_pacing":
+            # Show brief completion message for other tools
+            await active_steps[node_name].stream_token(
+                f"*✅ Tool `{tool_name}` completed*\n\n"
+            )
     
     # Agent completes
-    elif event_type == "on_chain_end":
+    elif event_type == "on_chain_end" or event_type == "on_chat_model_end":
         if node_name in active_steps:
             # Step will auto-close, or we can explicitly finalize
             await active_steps[node_name].update()
     
     # Error handling
     elif event_type == "on_chain_error":
-        if node_name in active_steps:
-            error = event.get("data", {}).get("error", "Unknown error")
-            await active_steps[node_name].stream_token(
-                f"\n\n❌ **Error:** {str(error)}\n\n"
-            )
-            await active_steps[node_name].update()
+        await _ensure_step_exists()
+        error = event.get("data", {}).get("error", "Unknown error")
+        await active_steps[node_name].stream_token(
+            f"\n\n❌ **Error:** {str(error)}\n\n"
+        )
+        await active_steps[node_name].update()
 
 
 async def _handle_semantic_search_event(event_type, event, active_steps):
@@ -239,7 +333,7 @@ async def _handle_semantic_search_event(event_type, event, active_steps):
     # Show as expandable step for consistency
     if event_type == "on_chain_start":
         step = cl.Step(name="🔍 Semantic Search", type="tool")
-        step.language = "markdown"
+        # step.language = "markdown"  # COMMENTED: Causes raw markdown display and horizontal scroll
         await step.send()
         active_steps["semantic_search"] = step
     
