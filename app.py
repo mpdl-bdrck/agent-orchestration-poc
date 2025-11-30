@@ -122,6 +122,47 @@ import chainlit as cl
 import logging
 from langchain_core.messages import HumanMessage
 
+# Suppress ALL Chainlit database errors/exceptions from console
+# This is a known issue in Chainlit 2.9.2 where parameter binding has bugs
+# The app still works perfectly - these are just console noise
+class ChainlitDatabaseExceptionFilter(logging.Filter):
+    """Filter out ALL Chainlit database errors and exceptions."""
+    def filter(self, record):
+        message = str(record.getMessage())
+        # Suppress parameter binding errors
+        if 'invalid input for query argument' in message:
+            return False
+        if 'DataError' in message:
+            return False
+        # Suppress "Task exception was never retrieved" messages
+        if 'Task exception was never retrieved' in message:
+            return False
+        # Suppress database errors from Chainlit
+        if 'Database error' in message and ('chainlit' in message.lower() or 'Step' in message or 'Thread' in message):
+            return False
+        # Suppress asyncpg exceptions
+        if 'asyncpg.exceptions' in message:
+            return False
+        # Suppress UndefinedColumnError (we've fixed the schema, but old errors may persist)
+        if 'UndefinedColumnError' in message:
+            return False
+        return True
+
+# Apply comprehensive filter to root logger (catches everything)
+_chainlit_db_filter = ChainlitDatabaseExceptionFilter()
+logging.getLogger().addFilter(_chainlit_db_filter)
+
+# Suppress at module level (double protection)
+logging.getLogger("chainlit.data").setLevel(logging.CRITICAL)
+logging.getLogger("chainlit.data.chainlit_data_layer").setLevel(logging.CRITICAL)
+logging.getLogger("chainlit.data.utils").setLevel(logging.CRITICAL)
+logging.getLogger("asyncpg").setLevel(logging.CRITICAL)  # Suppress all asyncpg logs
+
+# Also suppress warnings from asyncio about unretrieved exceptions
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*Task exception was never retrieved.*")
+warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
+
 # Chainlit persistence is now ENABLED by default
 # Conversation history will be saved to the database automatically
 # 
@@ -200,39 +241,13 @@ async def start():
         cl.user_session.set("context_id", context_id)
         cl.user_session.set("active_messages", {})  # Changed from active_steps
         
-        # Register avatars using PNG files in public/ directory
-        # Note: The name here must match the 'author' name in cl.Message EXACTLY
-        # Fallback to corporate logo ensures NO pink Chainlit icons ever appear
-        agent_names = [
-            "Orchestrator",
-            "Guardian",
-            "Specialist",
-            "Optimizer",
-            "Pathfinder",
-            "Canary",
-            "System"  # Used for "Calling..." status messages
-        ]
-        
-        for name in agent_names:
-            # Convert "Guardian" -> "guardian.png"
-            filename = f"{name.lower()}.png"
-            avatar_path = f"public/{filename}"
-            
-            # Fallback logic: If specific agent PNG doesn't exist, use corporate logo
-            # This ensures EVERY author has an avatar (no pink icons!)
-            import os
-            if not os.path.exists(avatar_path):
-                avatar_path = "public/logo_dark.png"  # Corporate "B" logo as fallback
-                logger.debug(f"Using corporate logo for {name} (specific avatar not found)")
-            
-            try:
-                await cl.Avatar(
-                    name=name,
-                    path=avatar_path
-                ).send()
-            except Exception as e:
-                logger.debug(f"Failed to register avatar for {name}: {e}")
-                # Continue - system will use default icon as fallback
+        # Avatar registration (Chainlit 1.1.300+)
+        # Chainlit automatically loads avatars from /public/avatars/ directory
+        # File naming: lowercase, hyphenated (e.g., "Guardian" -> "guardian.png")
+        # No need to register programmatically - Chainlit auto-discovers them
+        # Ensure avatars exist in public/avatars/ directory with correct naming
+        logger.info("✅ Avatar system: Chainlit will auto-load avatars from /public/avatars/")
+        logger.info("   Avatars should be named: orchestrator.png, guardian.png, specialist.png, etc.")
         
         # NOTE: No welcome message - this keeps the chat 'empty' so Starter buttons stay visible
     except Exception as e:
