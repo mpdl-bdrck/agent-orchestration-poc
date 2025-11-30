@@ -389,6 +389,61 @@ src/
 
 **Fix**: Use orchestrator's full system prompt for FINISH responses.
 
+### Mistake 6: Adding Responses to Both messages and agent_responses
+
+**Symptom**: Agent nodes adding responses to both `messages` and `agent_responses` fields, causing duplicate display.
+
+**Fix**: Only add to `agent_responses`. Streaming callback handles display. Match Guardian pattern.
+
+**Example**:
+```python
+# ❌ WRONG
+return {
+    "messages": [AIMessage(content=response)],  # ← Causes duplicate
+    "agent_responses": state.get("agent_responses", []) + [{"agent": "specialist", "response": response}],
+}
+
+# ✅ CORRECT
+return {
+    "agent_responses": state.get("agent_responses", []) + [{"agent": "specialist", "response": response}],
+    "current_task_instruction": "",
+    "next": ""
+}
+```
+
+### Mistake 7: Conditional Imports Inside Methods
+
+**Symptom**: Importing modules conditionally inside methods instead of at module level, causing `ModuleNotFoundError` after module state changes.
+
+**Fix**: Always import at module level (top of file), not conditionally inside methods.
+
+**Example**:
+```python
+# ❌ WRONG
+def analyze(self, question):
+    if self.tools:
+        from ...utils.agent_loop import execute_agent_loop  # ← Conditional import
+
+# ✅ CORRECT
+from ...utils.agent_loop import execute_agent_loop  # ← Module-level import
+
+def analyze(self, question):
+    if self.tools:
+        # execute_agent_loop is already available
+```
+
+### Mistake 8: Inconsistent Emoji Usage
+
+**Symptom**: Using different emojis for the same agent across different files (e.g., Optimizer with ⚡ vs 🎯).
+
+**Fix**: Maintain consistent emoji mapping:
+- 🛡️ Guardian Agent
+- 🔧 Specialist Agent
+- 🎯 Optimizer Agent (NOT ⚡)
+- 🧭 Pathfinder Agent
+
+**Verification**: Check all prompt files and agent references for consistency.
+
 ---
 
 ## Testing & Validation
@@ -444,6 +499,9 @@ src/
 2. **Fixed supervisor prompt usage** - Uses orchestrator prompt for FINISH responses
 3. **Fixed Guardian tool calling** - Uses supervisor instruction to avoid unnecessary tool calls
 4. **Removed tool-calling pattern** - Now uses native router with structured output
+5. **Fixed duplicate agent responses** - Removed messages from agent nodes, only use agent_responses (December 2025)
+6. **Fixed Guardian import error** - Moved execute_agent_loop import to module level (December 2025)
+7. **Fixed Optimizer emoji consistency** - Updated Guardian prompt to use 🎯 instead of ⚡ (December 2025)
 
 ### Latest Learnings (Cost Framing & CoT Inhibition)
 
@@ -1043,6 +1101,117 @@ Solution: **Cost Framing** + **CoT Inhibition** + **Better Model** creates a "th
 
 ---
 
+### Latest Fixes (December 2025) - Agent Response Duplication & Import Errors
+
+#### Critical Learning: Agent Node Response Pattern - Only Use agent_responses
+
+**Problem**: When users asked "have all agents introduce themselves", Specialist and Optimizer agents were responding twice - once from streaming callback and once from messages being added to state.
+
+**Root Cause**: Agent nodes (Specialist, Optimizer, Pathfinder) were adding responses to BOTH:
+- `messages` field (causing duplicate display)
+- `agent_responses` field (for supervisor tracking)
+
+The streaming callback already handles display, so adding to `messages` caused duplicates.
+
+**✅ Solution**: Match Guardian pattern - only add to `agent_responses`, not `messages`.
+
+**Implementation**:
+```python
+# ❌ WRONG (causes duplicates)
+return {
+    "messages": [AIMessage(content=response)],  # ← Causes duplicate display
+    "agent_responses": state.get("agent_responses", []) + [{"agent": "specialist", "response": response}],
+    "current_task_instruction": ""
+}
+
+# ✅ CORRECT (matches Guardian pattern)
+return {
+    # DO NOT add to messages - only add to agent_responses
+    # The streaming callback already displays the response
+    "agent_responses": state.get("agent_responses", []) + [{"agent": "specialist", "response": response}],
+    "current_task_instruction": "",
+    "next": ""  # Return to supervisor for FINISH routing
+}
+```
+
+**Files Fixed**:
+- `src/agents/orchestrator/graph/nodes/specialist.py`
+- `src/agents/orchestrator/graph/nodes/optimizer.py`
+- `src/agents/orchestrator/graph/nodes/pathfinder.py`
+
+**Key Principle**: Streaming callback handles display. Agent nodes should only track responses in `agent_responses` for supervisor routing decisions.
+
+---
+
+#### Critical Learning: Module-Level Imports Prevent Conditional Import Failures
+
+**Problem**: Guardian agent was throwing `ModuleNotFoundError: No module named 'src.utils.agent_loop'` when called for introductions AFTER using its tool.
+
+**Root Cause**: The import `from ...utils.agent_loop import execute_agent_loop` was happening conditionally inside the `analyze()` method:
+```python
+if self.tools and use_tools:
+    try:
+        from ...utils.agent_loop import execute_agent_loop  # ← Conditional import
+```
+
+After Guardian used its tool, Python's import system couldn't resolve the relative import when it was called again.
+
+**✅ Solution**: Move import to module level (top of file) so it happens once when the module loads.
+
+**Implementation**:
+```python
+# ✅ CORRECT - Import at module level
+from ..base_specialist import BaseSpecialistAgent
+from ...utils.observability import trace_agent
+from ...utils.tool_instructions import build_toolkit_reference
+from ...utils.agent_loop import execute_agent_loop  # ← Module-level import
+
+# Then in analyze() method:
+if self.tools and use_tools:
+    try:
+        # execute_agent_loop is already imported - no need to import here
+        from langchain_core.messages import SystemMessage, HumanMessage
+```
+
+**File Fixed**: `src/agents/specialists/guardian_agent.py`
+
+**Key Principle**: Always import at module level, not conditionally inside methods. This ensures consistent import resolution regardless of execution path.
+
+---
+
+#### Critical Learning: Emoji Consistency Across Agent References
+
+**Problem**: Guardian agent was referring to Optimizer Agent with wrong emoji (⚡ instead of 🎯) in its system prompt.
+
+**Root Cause**: Inconsistent emoji usage in `config/prompts/guardian_agent/system.txt` - used ⚡ while other files used 🎯.
+
+**✅ Solution**: Update Guardian system prompt to match emoji used in orchestrator and agent_utils.
+
+**Implementation**:
+```python
+# ❌ WRONG
+3. Optimizer Agent (⚡) - Budget and performance optimization
+
+# ✅ CORRECT
+3. Optimizer Agent (🎯) - Budget and performance optimization
+```
+
+**File Fixed**: `config/prompts/guardian_agent/system.txt`
+
+**Key Principle**: Maintain emoji consistency across all agent references. Use:
+- 🛡️ Guardian Agent
+- 🔧 Specialist Agent
+- 🎯 Optimizer Agent (NOT ⚡)
+- 🧭 Pathfinder Agent
+
+**Verification**: Check all files that reference agents:
+- `src/agents/orchestrator/orchestrator.py`
+- `src/agents/orchestrator/agent_utils.py`
+- `src/agents/orchestrator/prompts.py`
+- `config/prompts/guardian_agent/system.txt`
+
+---
+
 ## Key Architectural Decisions
 
 ### Decision 1: Always Invoke Graph
@@ -1582,6 +1751,8 @@ Before committing changes, verify:
 3. State properly managed?
 
 **Fix**: Ensure single emission point for responses.
+
+**✅ FIXED (December 2025)**: Agent nodes (Specialist, Optimizer, Pathfinder) were adding responses to both `messages` and `agent_responses`, causing duplicate display. Fixed by matching Guardian pattern - only add to `agent_responses`, not `messages`. Streaming callback already handles display.
 
 ---
 
