@@ -24,6 +24,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import pytz
+from contextlib import redirect_stdout, redirect_stderr
+from io import StringIO
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
@@ -430,6 +432,29 @@ def analyze_portfolio_pacing(
                         # Step 3: Import src.utils.logging (ensures it's accessible)
                         import src.utils.logging
                         
+                        # CRITICAL: Monkey-patch setup_logger BEFORE importing CampaignSpendAnalyzer
+                        # This prevents console handlers from being added when DataRollupProcessor.__init__ calls setup_logger()
+                        original_setup_logger_func = src.utils.logging.setup_logger
+                        
+                        def suppressed_setup_logger(name, log_file=None, level=logging.INFO):
+                            """Suppressed version of setup_logger that doesn't add console handlers"""
+                            logger_obj = logging.getLogger(name)
+                            logger_obj.setLevel(logging.CRITICAL)  # Suppress all messages
+                            # Don't add console handler - that's what we're preventing
+                            # Only add file handler if specified (for debugging, but won't show in console)
+                            if log_file:
+                                import os
+                                os.makedirs(os.path.dirname(log_file), exist_ok=True)
+                                file_handler = logging.FileHandler(log_file)
+                                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                                file_handler.setFormatter(formatter)
+                                logger_obj.addHandler(file_handler)
+                            return logger_obj
+                        
+                        # Monkey-patch the module
+                        src.utils.logging.setup_logger = suppressed_setup_logger
+                        logger.debug("✅ Monkey-patched setup_logger to suppress console handlers")
+                        
                         # Step 4: Import src.utils.config (might be needed)
                         try:
                             import src.utils.config
@@ -501,18 +526,124 @@ def analyze_portfolio_pacing(
             except Exception as e:
                 logger.warning(f"Could not import load_client_config: {e}, using UTC timezone")
             
-            # Initialize analyzer with account, advertiser filter, and client config (for PST timezone)
-            analyzer = CampaignSpendAnalyzer(
-                account_id=clean_account,
-                advertiser_filter=clean_filter,
-                client_config=client_config  # Pass client config for PST timezone handling
-            )
+            # Suppress stdout/stderr to hide internal print statements from CampaignSpendAnalyzer
+            # and DatabaseConnector. The Guardian agent will format and display the results,
+            # not the raw tool output or internal processing messages.
+            # Also suppress logging output from internal components (data.rollup.processor, etc.)
+            stdout_capture = StringIO()
+            stderr_capture = StringIO()
             
-            # Run full analysis (discovers campaigns, collects spend data, generates rollups)
-            result = analyzer.run_analysis(
-                start_date=clean_start,
-                end_date=clean_end
-            )
+            # Temporarily suppress logging for internal components
+            # Remove handlers entirely to prevent any log output during tool execution
+            loggers_to_suppress = [
+                'data.rollup.processor',
+                'campaign.analyzer',
+                'database.connector',
+                'src.data_rollup_processor',
+                'src.campaign_analyzer',
+                'src.utils.logging'
+            ]
+            original_log_levels = {}
+            handlers_removed = []  # Track (logger, handler) pairs that were removed
+            
+            # Monkey-patch setup_logger RIGHT BEFORE calling run_analysis()
+            # This prevents handlers from being added when DataRollupProcessor.__init__ calls setup_logger()
+            # We need to patch it every time because DataRollupProcessor is created fresh each time
+            original_setup_logger_func = None
+            logging_module_patched = None
+            try:
+                # Get tool directory path
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                tool_dir = os.path.join(project_root, "tools", "campaign-portfolio-pacing")
+                
+                # Try to import and patch setup_logger
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(tool_dir)
+                    if tool_dir not in sys.path:
+                        sys.path.insert(0, tool_dir)
+                    
+                    # Import the logging module
+                    import src.utils.logging as logging_module
+                    original_setup_logger_func = logging_module.setup_logger
+                    logging_module_patched = logging_module
+                    
+                    # Create suppressed version that doesn't add console handlers
+                    def suppressed_setup_logger(name, log_file=None, level=logging.INFO):
+                        """Suppressed version of setup_logger that doesn't add console handlers"""
+                        logger_obj = logging.getLogger(name)
+                        logger_obj.setLevel(logging.CRITICAL)  # Suppress all messages
+                        # Don't add console handler - that's what we're preventing
+                        # Only add file handler if specified (for debugging, but won't show in console)
+                        if log_file:
+                            import os
+                            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+                            file_handler = logging.FileHandler(log_file)
+                            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                            file_handler.setFormatter(formatter)
+                            logger_obj.addHandler(file_handler)
+                        return logger_obj
+                    
+                    # Monkey-patch the module
+                    logging_module.setup_logger = suppressed_setup_logger
+                    logger.debug("Monkey-patched setup_logger to suppress console handlers")
+                finally:
+                    os.chdir(original_cwd)
+            except Exception as e:
+                logger.debug(f"Could not monkey-patch setup_logger: {e}, using handler removal instead")
+            
+            # Also suppress existing loggers (in case they were already created)
+            for logger_name in loggers_to_suppress:
+                logger_obj = logging.getLogger(logger_name)
+                original_log_levels[logger_name] = logger_obj.level
+                logger_obj.setLevel(logging.CRITICAL)  # Set very high to suppress all messages
+                
+                # Temporarily remove all handlers for this logger to prevent any output
+                for handler in list(logger_obj.handlers):  # Create copy of list to iterate safely
+                    handlers_removed.append((logger_obj, handler))
+                    logger_obj.removeHandler(handler)
+            
+            try:
+                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                    # Initialize analyzer with account, advertiser filter, and client config (for PST timezone)
+                    # DatabaseConnector prints connection messages during __init__, so suppress here too
+                    analyzer = CampaignSpendAnalyzer(
+                        account_id=clean_account,
+                        advertiser_filter=clean_filter,
+                        client_config=client_config  # Pass client config for PST timezone handling
+                    )
+                    
+                    # Run full analysis (discovers campaigns, collects spend data, generates rollups)
+                    # DataRollupProcessor will be created here and will use our patched setup_logger
+                    result = analyzer.run_analysis(
+                        start_date=clean_start,
+                        end_date=clean_end
+                    )
+            finally:
+                # Restore original setup_logger if we monkey-patched it
+                if logging_module_patched and original_setup_logger_func:
+                    try:
+                        logging_module_patched.setup_logger = original_setup_logger_func
+                        logger.debug("Restored original setup_logger")
+                    except Exception as e:
+                        logger.debug(f"Could not restore setup_logger: {e}")
+                
+                # Restore original log levels
+                for logger_name, original_level in original_log_levels.items():
+                    logger_obj = logging.getLogger(logger_name)
+                    logger_obj.setLevel(original_level)
+                
+                # Restore handlers
+                for logger_obj, handler in handlers_removed:
+                    logger_obj.addHandler(handler)
+            
+            # Log captured output at debug level (for troubleshooting, but not shown to user)
+            captured_stdout = stdout_capture.getvalue()
+            captured_stderr = stderr_capture.getvalue()
+            if captured_stdout:
+                logger.debug(f"Suppressed stdout output (length: {len(captured_stdout)} chars)")
+            if captured_stderr:
+                logger.debug(f"Suppressed stderr output (length: {len(captured_stderr)} chars)")
             
             # Check for errors
             if result.get('error'):

@@ -142,11 +142,6 @@ def execute_agent_loop(
 
             # Execute each tool call
             for tool_call in result.tool_calls:
-                # 🔍 TRAP LOGGING: Capture raw args from Gemini before any processing
-                print(f"🔍 RAW ARGS: {tool_call.get('args', {})}")
-                print(f"🔍 RAW TYPE: {type(tool_call.get('args', {}))}")
-                print(f"🔍 RAW REPR: {repr(tool_call.get('args', {}))}")
-                
                 tool_name, tool_args, tool_call_id = _extract_tool_call_info(tool_call, job_name)
 
                 # Emit streaming event for tool call

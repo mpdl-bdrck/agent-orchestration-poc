@@ -88,18 +88,14 @@ class CLIChat:
             tool_name = data.get('tool', '') if data else ''
             tool_output = data.get('result', message) if data else message
             
-            # Show actual tool output for debugging/transparency
+            # Hide tool output for analyze_portfolio_pacing - Guardian agent will format and display it
+            # The raw tool output is only for internal agent use, not user display
             if tool_name == 'analyze_portfolio_pacing':
-                # Display the actual tool output
-                self.display.show_reasoning(f"📊 Tool Output ({tool_name}):")
-                # Show tool output in a readable format
-                if isinstance(tool_output, str):
-                    # Truncate if too long, but show enough to see what tool returned
-                    display_output = tool_output[:500] + "..." if len(tool_output) > 500 else tool_output
-                    self.display.show_reasoning(f"   {display_output}")
-                else:
-                    self.display.show_reasoning(f"   {str(tool_output)[:500]}")
-            elif tool_name == 'semantic_search':
+                # Don't display raw tool output - Guardian agent will show formatted response
+                return  # Skip displaying tool output
+            
+            # Show actual tool output for debugging/transparency (other tools)
+            if tool_name == 'semantic_search':
                 count = data.get('count', 0) if data else 0
                 self.display.show_reasoning(f"✅ Semantic search found {count} results")
             else:

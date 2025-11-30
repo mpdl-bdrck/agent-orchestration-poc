@@ -262,7 +262,6 @@ When calling analyze_portfolio_pacing, use these defaults unless the user specif
                 from ...utils.agent_loop import execute_agent_loop
 
                 logger.info(f"Guardian agent has {len(self.tools)} tools available")
-                self._emit_streaming_event("status", f"Using {len(self.tools)} tool(s) for analysis")
                 
                 # Build messages
                 system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
