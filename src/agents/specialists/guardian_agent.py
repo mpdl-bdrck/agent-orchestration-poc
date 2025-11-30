@@ -14,6 +14,7 @@ from langchain_core.tools import StructuredTool  # Type hint only - we use @tool
 from ..base_specialist import BaseSpecialistAgent
 from ...utils.observability import trace_agent
 from ...utils.tool_instructions import build_toolkit_reference
+from ...utils.agent_loop import execute_agent_loop
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +260,7 @@ When calling analyze_portfolio_pacing, use these defaults unless the user specif
         if self.tools and use_tools:
             try:
                 from langchain_core.messages import SystemMessage, HumanMessage
-                from ...utils.agent_loop import execute_agent_loop
+                # execute_agent_loop is imported at module level - no need to import here
 
                 logger.info(f"Guardian agent has {len(self.tools)} tools available")
                 

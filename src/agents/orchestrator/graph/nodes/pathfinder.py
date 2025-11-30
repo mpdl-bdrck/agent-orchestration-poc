@@ -4,7 +4,6 @@ Pathfinder agent node for LangGraph.
 Reads instruction from state and executes Pathfinder agent logic.
 """
 import logging
-from langchain_core.messages import AIMessage
 
 from ..state import AgentState
 
@@ -54,19 +53,30 @@ def create_pathfinder_node(call_specialist_agent_func, embedding_model, get_agen
                 except Exception:
                     pass
             
+            # NOTE: Do NOT emit agent_response here - the Pathfinder agent already emits
+            # via its own streaming_callback. Emitting here causes duplicates.
+            
+            # Update state
+            # CRITICAL: Set next="" to return to supervisor so it can route to FINISH
+            # CRITICAL: Do NOT add to messages - agent already streamed via callback
+            # Supervisor can see response via agent_responses, no need to add to messages
+            # Adding to messages causes duplicate display (Pathfinder response + Orchestrator echo)
             return {
-                "messages": [AIMessage(content=response)],
+                # DO NOT add to messages - only add to agent_responses
+                # The Guardian node follows this pattern correctly - Pathfinder should match it
                 "agent_responses": state.get("agent_responses", []) + [{"agent": "pathfinder", "response": response}],
-                "current_task_instruction": ""
+                "current_task_instruction": "",  # Clear after processing
+                "next": ""  # Return to supervisor for FINISH routing
             }
             
         except Exception as e:
             logger.error(f"Pathfinder node error: {e}", exc_info=True)
             error_response = f"Error in Pathfinder agent: {str(e)}"
             return {
-                "messages": [AIMessage(content=error_response)],
+                # DO NOT add to messages - only add to agent_responses (prevents duplicates)
                 "agent_responses": state.get("agent_responses", []) + [{"agent": "pathfinder", "response": error_response}],
-                "current_task_instruction": ""
+                "current_task_instruction": "",
+                "next": ""
             }
     
     return pathfinder_node
