@@ -1,207 +1,143 @@
-# Agent Orchestration POC
+# Bedrock Agent Orchestration POC
 
-A generic, domain-agnostic multi-agent CRAG (Corrective Retrieval-Augmented Generation) system for knowledge base Q&A. Extracted and generalized from StoryForge's Agentic CRAG architecture.
+A robust, multi-agent orchestration system built on **LangGraph**, **LangChain**, and **Google Gemini 2.5 Flash**. This system demonstrates the **Supervisor Pattern** to coordinate specialist agents for Programmatic Advertising (DSP) portfolio management.
 
-## Features
+## 🌟 Key Features
 
-- **Multi-Agent Orchestration**: Orchestrator agent delegates complex queries to specialist agents
-- **CRAG Integration**: Corrective RAG validation ensures retrieved context is relevant
-- **Hybrid Search**: Combines keyword (TSVECTOR) and semantic (pgvector) search
-- **CLI-First Interface**: "Glass box" terminal output showing reasoning, tool calls, and answers
-- **Markdown Knowledge Base**: Ingest Markdown files with automatic metadata extraction
-- **Domain-Agnostic**: No domain-specific logic - works with any knowledge base
+- **LangGraph Supervisor Architecture**: A central Orchestrator node uses structured outputs (`RouteDecision`) to intelligently route tasks to specialist agents or knowledge base tools.
+- **"Glass Box" Visibility**: Real-time streaming of agent reasoning, tool inputs, and state transitions via Chainlit.
+- **Robust Tooling**: Implements the **"Canary Pattern"** and **Double-Ended Sanitation** to prevent LLM-induced crashes (handling malformed list/string inputs).
+- **Cost & Inhibition Protocols**: "Tool Holster" logic prevents agents from using expensive tools for simple greetings or out-of-scope queries.
+- **Hybrid Interface**: 
+  - **CLI**: Detailed debug/reasoning output.
+  - **Chainlit UI**: Modern, split-view interface (Orchestrator in main chat, Agents in nested steps).
 
-## Quick Start
+## 🤖 Agent Roster
 
-### 1. Installation
+The system orchestrates four specialized agents:
+
+1.  **🛡️ Guardian Agent**: Portfolio oversight, health monitoring, and anomaly detection. Equipped with the `analyze_portfolio_pacing` tool.
+2.  **🔧 Specialist Agent**: Deep diagnostic analysis, root cause identification, and troubleshooting.
+3.  **🎯 Optimizer Agent**: Budget allocation, bid optimization, and creative rotation strategies.
+4.  **🧭 Pathfinder Agent**: Supply chain navigation, QPS optimization, and SSP relationship management.
+
+## 🏗️ Architecture
+
+![LangGraph Agent Orchestration](docs/images/langgraph_agent_orchestration.png)
+
+*Figure: High-level Supervisor Architecture showing the flow between Orchestrator, Agents, and Shared State.*
+
+```mermaid
+graph TD
+    UserInput --> Orchestrator
+    Orchestrator --"RouteDecision"--> Router{Condition}
+    
+    Router --"next='guardian'"--> GuardianNode
+    Router --"next='specialist'"--> SpecialistNode
+    Router --"next='optimizer'"--> OptimizerNode
+    Router --"next='pathfinder'"--> PathfinderNode
+    Router --"next='semantic_search'"--> SearchServiceNode
+    
+    GuardianNode --> Orchestrator
+    SpecialistNode --> Orchestrator
+    OptimizerNode --> Orchestrator
+    PathfinderNode --> Orchestrator
+    SearchServiceNode --> Orchestrator
+    
+    Router --"next='FINISH'"--> End
+```
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+
+  - Python 3.10+ (Python 3.14+ requires compatibility fixes - see below)
+  - PostgreSQL with `pgvector` extension installed.
+  - Google Gemini API Key (Verified for `gemini-2.5-flash`).
+
+### 2. Installation
 
 ```bash
-# Clone the repository
-cd agent_orchestration_poc
-
-# Install dependencies
+# Clone and install dependencies
 pip install -r requirements.txt
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys and database URL
+# For Chainlit UI support (Python 3.14+)
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install chainlit
 ```
 
-### 2. Configure Database
+### 3. Configuration
 
-Ensure PostgreSQL with pgvector extension is installed:
+Copy `.env.example` to `.env` and configure:
 
-```sql
-CREATE DATABASE knowledge_base;
-\c knowledge_base
-CREATE EXTENSION IF NOT EXISTS vector;
+```env
+GEMINI_API_KEY=your_key_here
+DATABASE_URL=postgresql://user:pass@localhost:5432/knowledge_base
+LOG_LEVEL=INFO
 ```
 
-Update `DATABASE_URL` in `.env`:
+### 4. Running the Application
 
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/knowledge_base
-```
-
-### 3. Prepare Knowledge Base
-
-Organize your Markdown files in a directory structure:
-
-```
-knowledge_base/
-├── category1/
-│   ├── document1.md
-│   └── document2.md
-└── category2/
-    └── document3.md
-```
-
-See [KB_STRUCTURE.md](./KB_STRUCTURE.md) for detailed guidelines.
-
-### 4. Ingest Knowledge Base
+**Run the Chainlit UI (Recommended):**
 
 ```bash
-python -m src.ingestion.ingest --kb-path ./knowledge_base --context-id my_kb
+# IMPORTANT: For Python 3.14+, you MUST use the wrapper script:
+python run_chainlit.py
+
+# For Python 3.13 and below, you can use:
+chainlit run app.py -w
 ```
 
-### 5. Start CLI Chat
+**⚠️ Python 3.14+ Users**: The `run_chainlit.py` wrapper script is REQUIRED. Running `chainlit run app.py` directly will fail with async context errors.
+
+**Run the CLI (For debugging):**
 
 ```bash
-python -m src.interface.cli.main --context-id my_kb
+python -m src.interface.cli.main --context-id bedrock_kb
 ```
 
-## Architecture
+## 🛡️ Stability Patterns (The "Anti-Crash" Layer)
 
-### Core Components
+This project implements specific patterns to handle "Eager" LLMs (like Gemini Flash) that often hallucinate input formats:
 
-- **BaseAgent**: Base class for all agents with LLM, memory, and tool execution
-- **OrchestratorAgent**: Main agent that manages conversation flow and delegates to specialists
-- **Specialist Agents**: Content, Structure, Detail, and Format analyzers for deep analysis
-- **CRAG Validator**: Validates and corrects retrieved context for relevance
-- **Semantic Search**: Hybrid search combining keyword and vector embeddings
+1.  **Middleware Normalization**: `agent_loop.py` recursively unwraps nested lists before they hit Pydantic validation.
+2.  **The Canary Pattern**: Tools use `@tool` decorators with internal `safe_str` sanitizers rather than strict Pydantic schemas, preventing schema validation crashes.
+3.  **Validation Bypass**: The execution loop attempts to call the raw Python function (`.func`) directly to bypass LangChain's internal validation layer when necessary.
 
-### Data Flow
-
-1. User asks question via CLI
-2. OrchestratorAgent determines if multi-agent orchestration is needed
-3. Semantic search retrieves relevant chunks (with CRAG validation)
-4. Specialist agents analyze complex queries
-5. OrchestratorAgent synthesizes responses
-6. "Glass box" output shows reasoning, tool calls, and final answer
-
-## Configuration
-
-### Environment Variables
-
-- `GEMINI_API_KEY`: Google Gemini API key (required)
-- `DATABASE_URL`: PostgreSQL connection string
-- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
-
-### Config Files
-
-- `config/config.yaml`: Main configuration
-- `config/orchestrator.yaml`: Orchestrator agent configuration
-- `config/prompts/`: Prompt templates for agents
-
-## Usage Examples
-
-### Simple Question
+## 📂 Project Structure
 
 ```
-> What is the main topic of the knowledge base?
-
-[REASONING] Processing question...
-[TOOL] semantic_search(query="main topic")
-🔍 CRAG Validation: 3/5 chunks validated (avg relevance: 0.85)
-
-[Final Answer]
-The knowledge base covers...
+src/
+├── agents/
+│   ├── orchestrator/       # Supervisor logic & Graph definition
+│   └── specialists/        # Agent definitions (Guardian, etc.)
+├── tools/                  # Robust tool definitions (guardian_v2_tool.py)
+├── utils/
+│   └── agent_loop.py       # Core execution loop with Middleware Safety
+└── graph/                  # LangGraph state & node logic
 ```
 
-### Complex Question (Multi-Agent)
+## ⚠️ Common Issues & Fixes
 
-```
-> How is the content structured and what are the key details?
+**Issue:** `AttributeError: 'list' object has no attribute 'strip'`
 
-[REASONING] Processing question...
-🔄 Multi-Agent Orchestration: Structure Analyzer, Detail Analyzer
+**Cause:** The LLM sent `['value']` instead of `"value"`.
 
-🧠 Structure Analyzer:
-[Analysis of document structure...]
+**Fix:** Already handled by the **Double-Ended Sanitation** layer. If this recurs, ensure you are using `guardian_v2_tool.py` and not the legacy version.
 
-🔍 Detail Analyzer:
-[Analysis of key details...]
+**Issue:** Infinite loops or "Ghost" output.
 
-[Final Answer]
-[Synthesized answer combining both analyses...]
-```
+**Cause:** Agent logic bypassing the `execute_agent_loop` streaming callbacks.
 
-## Knowledge Base Setup
+**Fix:** Ensure all agents return to the Supervisor and use the standard execution wrapper.
 
-See [KB_STRUCTURE.md](./KB_STRUCTURE.md) for:
-- Folder structure guidelines
-- Naming conventions
-- Metadata extraction rules
-- Best practices
+**Issue:** Chainlit async context error (Python 3.14+)
 
-## Advanced
+**Cause:** `sniffio` can't detect async library in Python 3.14.
 
-### Multi-Agent Orchestration
+**Fix:** Use `python run_chainlit.py` wrapper script which patches `sniffio` automatically.
 
-The orchestrator automatically triggers specialist agents for:
-- Complex analytical questions
-- Questions requiring multiple perspectives
-- Deep-dive analysis requests
+## 📚 Documentation
 
-### CRAG Validation
-
-CRAG (Corrective RAG) ensures retrieved chunks are relevant:
-- Grades chunks for relevance (0.0-1.0)
-- Rewrites queries when insufficient relevant chunks found
-- Provides metrics in "glass box" output
-
-### Custom Agents
-
-Create custom specialist agents by inheriting from `BaseSpecialistAgent`:
-
-```python
-from src.agents.base_specialist import BaseSpecialistAgent
-
-class CustomAnalyzerAgent(BaseSpecialistAgent):
-    def __init__(self, config_path: str):
-        super().__init__(config_path)
-        # Custom initialization
-```
-
-## Troubleshooting
-
-### Database Connection Issues
-
-- Verify PostgreSQL is running
-- Check `DATABASE_URL` format
-- Ensure pgvector extension is installed
-
-### No Results from Search
-
-- Verify knowledge base was ingested successfully
-- Check `context_id` matches ingestion context_id
-- Ensure chunks exist in database
-
-### Import Errors
-
-- Verify all dependencies installed: `pip install -r requirements.txt`
-- Check Python path includes project root
-- Verify `__init__.py` files exist in all packages
-
-## Contributing
-
-This is a boilerplate project extracted from StoryForge. Contributions welcome!
-
-## License
-
-[Specify license]
-
-## Acknowledgments
-
-Extracted and generalized from StoryForge's Agentic CRAG system.
-
+- **`AI_HANDOFF.md`**: Comprehensive architectural decisions, patterns, and troubleshooting guide
+- **`docs/chainlit_ui_implementation_plan.md`**: Chainlit UI implementation details
+- **`docs/chainlit_ui_tickets.md`**: Implementation ticket tracking

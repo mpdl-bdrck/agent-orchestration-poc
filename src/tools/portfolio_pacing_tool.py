@@ -644,13 +644,13 @@ def analyze_portfolio_pacing(
                 logger.debug(f"Suppressed stdout output (length: {len(captured_stdout)} chars)")
             if captured_stderr:
                 logger.debug(f"Suppressed stderr output (length: {len(captured_stderr)} chars)")
-            
-            # Check for errors
-            if result.get('error'):
-                error_msg = result.get('error')
-                logger.error(f"Analysis returned error: {error_msg}")
-                raise Exception(f"Portfolio analysis failed: {error_msg}")
-            
+                
+                # Check for errors
+                if result.get('error'):
+                    error_msg = result.get('error')
+                    logger.error(f"Analysis returned error: {error_msg}")
+                    raise Exception(f"Portfolio analysis failed: {error_msg}")
+                
             # Add account_id to result for formatting
             result['account_id'] = clean_account
             
@@ -663,11 +663,11 @@ def analyze_portfolio_pacing(
                 client_config=client_config
             )
             logger.info("✅ Portfolio analysis completed successfully")
-            return formatted_output
-            
-        except Exception as e:
+                return formatted_output
+                
+            except Exception as e:
             logger.error(f"Error running portfolio analysis: {e}", exc_info=True)
-            raise Exception(f"Portfolio analysis failed: {str(e)}")
+                raise Exception(f"Portfolio analysis failed: {str(e)}")
         
     except Exception as e:
         logger.error(f"Portfolio pacing tool error: {e}", exc_info=True)

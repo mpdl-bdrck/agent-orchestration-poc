@@ -131,6 +131,15 @@ Agents called: {', '.join(agents_called) if agents_called else 'none'}""")
             structured_llm = llm.with_structured_output(RouteDecision)
             decision = structured_llm.invoke(messages)
             
+            # Safety check: ensure decision is not None
+            if decision is None:
+                logger.error("Supervisor LLM returned None decision. Falling back to FINISH.")
+                decision = RouteDecision(
+                    next="FINISH",
+                    reasoning="Unable to determine routing decision.",
+                    instructions=""
+                )
+            
             # CRITICAL FIX: Prevent routing back to same agent if they already responded
             # This prevents the tool from being called twice for the same question
             if decision.next in agents_called and decision.next != "semantic_search" and decision.next != "FINISH":
