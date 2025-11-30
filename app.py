@@ -466,20 +466,12 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
 
 
 async def _handle_semantic_search_event(event_type, event, orchestrator_msg):
-    """Handle semantic search events - show as inline text in orchestrator message."""
-    if orchestrator_msg is None:
-        return  # Can't show if no orchestrator message exists
-    
-    # Show semantic search activity inline in orchestrator's message
-    if event_type == "on_tool_start":
-        # Extract query from event data
-        input_data = event.get("data", {}).get("input", {})
-        query = input_data.get("query", "") if isinstance(input_data, dict) else ""
-        await orchestrator_msg.stream_token(
-            f"\n\n🔍 *Searching knowledge base for: `{query}`...*\n\n"
+    """Handle semantic search events - show as standalone status message."""
+    # Semantic search is a custom node (not a tool), so use on_chain_start instead of on_tool_start
+    if event_type == "on_chain_start":
+        # Create standalone status message (like "Calling X Agent...")
+        status_msg = cl.Message(
+            content=f"🔍 Searching Knowledge Base...",
+            author="System"
         )
-    
-    elif event_type == "on_tool_end":
-        await orchestrator_msg.stream_token(
-            "*✅ Search completed*\n\n"
-        )
+        await status_msg.send()
