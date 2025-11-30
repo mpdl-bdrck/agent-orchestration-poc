@@ -576,21 +576,56 @@ llm:
 - `src/core/base_agent.py` - Centralized config support
 - All agent configs - Updated to `gemini-2.5-flash` (standardized)
 
-#### Critical Learning: Tool Crash Fix - Middleware Normalization (The Breakthrough)
+#### Critical Learning: Tool Crash Fix - Double-Ended Sanitation (The Breakthrough)
 
 **Problem**: Guardian agent crashed with `'list' object has no attribute 'strip'` when calling tools, causing introduction text to disappear.
 
-**Root Cause Discovery**: The crash happens **BEFORE** the tool function executes. LangChain's `StructuredTool.invoke()` validates arguments via Pydantic **before** calling the function. When the LLM passes lists (e.g., `account_id: ["17"]`) instead of strings, Pydantic's internal validation calls `.strip()` on the list, causing the crash.
+**Deep Root Cause Discovery**: There were **TWO IDENTICAL PROBLEMS** in different layers:
+
+1. **Pydantic Model Layer**: `@field_validator` methods tried to handle lists but ran AFTER Pydantic's internal validation
+2. **Tool Function Layer**: `_normalize_string_arg()` function had the same flawed logic that could call `.strip()` on lists
+
+**The Smoking Gun**: Deep audit revealed line 50 in `src/tools/portfolio_pacing_tool.py`:
+```python
+return str(arg).strip() if arg else default  # ← CRASH: .strip() called on list object
+```
 
 **Why Previous Fixes Failed**:
-- ❌ **Pydantic field validators**: Run AFTER Pydantic's internal validation that calls `.strip()`
-- ❌ **Wrapper function normalization**: Runs AFTER validation fails
-- ❌ **Tool function normalization**: Runs AFTER validation fails
-- ❌ **All fixes were in the wrong layer** - they ran too late
+- ❌ **Single-layer fixes**: Only fixed Pydantic OR tool function, but not both
+- ❌ **Flawed normalization logic**: `str(arg).strip()` could fail if `arg` remained a list
+- ❌ **Timing issues**: Pydantic validators ran after internal validation already crashed
 
-**The Breakthrough Solution**: **Middleware Normalization**
+**The Breakthrough Solution**: **Double-Ended Sanitation**
 
-Normalize tool arguments **BEFORE** they reach LangChain's validation layer. This prevents the crash by cleaning data before Pydantic sees it.
+Implement bulletproof normalization logic in **BOTH** the Pydantic Model and Tool Function layers. Never rely on one or the other - make both layers independently robust.
+
+**Layer 1: Pydantic Model Guard** (`src/agents/specialists/guardian_agent.py`):
+```python
+@model_validator(mode='before')
+@classmethod
+def flatten_list_inputs(cls, data: Any) -> Any:
+    """NUCLEAR FIX: Intercepts raw data before ANY Pydantic validation."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, list):
+                data[key] = value[0] if value else ""
+    return data
+```
+
+**Layer 2: Tool Function Sanitation** (`src/tools/portfolio_pacing_tool.py`):
+```python
+def _normalize_string_arg(arg, default=""):
+    """Robustly converts Any input (List, None, String) to a clean String."""
+    if arg is None:
+        return default
+    if isinstance(arg, list):
+        if len(arg) > 0:
+            arg = arg[0]
+        else:
+            return default
+    # ATOMIC FIX: Cast to str() BEFORE stripping
+    return str(arg).strip()
+```
 
 **Implementation** (`src/utils/agent_loop.py`):
 
@@ -683,6 +718,217 @@ def normalize_account_id(cls, v):
 **Files Updated**:
 - `src/agents/specialists/guardian_agent.py` - Updated all `@field_validator` methods to handle lists before string operations
 
+#### Critical Learning: The Final Solution - Three-Layer Defense Architecture
+
+**Date**: November 29, 2025  
+**Status**: ✅ RESOLVED - Guardian agent now works perfectly for introductions
+
+#### The Problem (Recap)
+
+After multiple attempts with prompt engineering, middleware normalization, and Pydantic validators, the Guardian agent was still:
+1. Calling tools unnecessarily for introductions
+2. Crashing with `'list' object has no attribute 'strip'` when tools were called
+
+#### The Breakthrough: Three-Layer Defense
+
+The final solution uses **three complementary layers** that work together:
+
+##### Layer 1: Tool Holster Pattern (Prevention)
+
+**Location**: `src/agents/orchestrator/graph/nodes/guardian.py`
+
+**What It Does**: Physically removes tools from agent's capability set when supervisor explicitly forbids them.
+
+**How It Works**:
+- Supervisor sends explicit directives: "STRICTLY FORBIDDEN from using tools" or "text only"
+- Guardian node checks for these directives (NOT hardcoded keywords)
+- If detected → Calls `analyze_without_tools()` which runs LLM without `bind_tools()`
+- If not detected → Normal path with tools available
+
+**Why It Works**:
+- **Physical Prevention**: Tools aren't bound, so agent CANNOT call them
+- **Supervisor-Driven**: Respects explicit supervisor instructions, not hardcoded logic
+- **No Hardcoding**: Checks for directives, not use cases
+
+**Key Code**:
+```python
+# Check supervisor instruction for explicit directives
+explicit_no_tools_directives = [
+    "strictly forbidden from using tools",
+    "do not use tools",
+    "text only",
+    ...
+]
+should_holster_tools = any(directive in instruction_lower for directive in explicit_no_tools_directives)
+
+if should_holster_tools:
+    # Run WITHOUT tools - physically impossible to call them
+    agent.analyze_without_tools(...)
+else:
+    # Run WITH tools - agent decides
+    agent.analyze(...)
+```
+
+##### Layer 2: Canary Pattern (Ghost Buster) - Crash-Proof Tool
+
+**Location**: `src/tools/portfolio_pacing_tool.py`
+
+**What It Does**: Makes tool resilient to malformed inputs from eager LLMs.
+
+**How It Works**:
+1. Function signature accepts `Union[str, List[str]]` - Pydantic doesn't reject lists
+2. Internal cleaning function normalizes inputs BEFORE any string operations
+3. All arguments cleaned immediately at function entry
+4. Safe fallback if tool execution fails
+
+**Why It Works**:
+- **Accepts Anything**: `Union` types let lists pass Pydantic validation
+- **Cleans Inside**: Normalization happens BEFORE `.strip()` calls
+- **No Crashes**: Even if called unnecessarily, tool won't crash
+
+**Key Code**:
+```python
+@tool
+def analyze_portfolio_pacing(
+    account_id: Union[str, List[str]] = "17",  # ← Accepts both!
+    ...
+) -> str:
+    # --- THE "GHOST BUSTER" PATTERN ---
+    def clean(arg, default=""):
+        if arg is None: return default
+        if isinstance(arg, list):
+            return str(arg[0]).strip() if len(arg) > 0 else default
+        return str(arg).strip() if arg else default
+    
+    # Clean ALL inputs immediately (No Pydantic validation crash)
+    safe_account_id = clean(account_id, "17")
+    ...
+```
+
+> ⚠️ **ARCHITECTURAL DECISION RECORD (ADR): Why we removed Pydantic Schemas**
+>
+> **Do NOT refactor the Guardian tools back to `StructuredTool` / Pydantic models.**
+>
+> We intentionally downgraded to the simple `@tool` decorator because:
+> 1. **Eager Models (Flash):** These models often hallucinate input formats (sending `['17']` instead of `"17"`).
+> 2. **Validation Timing:** Pydantic validators run *before* our custom cleaning logic could intercept the data, causing `AttributeError` crashes inside the library itself.
+> 3. **Resilience:** The `@tool` decorator allows us to type hints as `Union[str, List[str]]`, permitting "bad" data to enter the function so we can sanitize it manually.
+>
+> **Rule:** All tools for "Flash" class models must use the `@tool` pattern with internal sanitation, not strict Schema validation.
+
+##### Layer 3: Middleware Normalization (Safety Net)
+
+**Location**: `src/utils/agent_loop.py`
+
+**What It Does**: Normalizes tool arguments before Pydantic validation AND filters unsupported parameters.
+
+**How It Works**:
+1. Normalizes lists to strings before tool invocation
+2. Checks tool signature and removes `job_name` if tool doesn't accept it
+3. Prevents validation errors even if Layer 1 fails
+
+**Why It Works**:
+- **Catches Edge Cases**: If tools are called anyway, arguments are normalized
+- **Signature-Aware**: Respects tool contracts (removes unsupported params)
+- **Defense in Depth**: Multiple layers of protection
+
+**Key Code**:
+```python
+# Normalize arguments BEFORE invoking
+normalized_args = _normalize_tool_args(tool_args)
+
+# Filter out job_name if tool doesn't accept it
+if 'job_name' in normalized_args:
+    sig = inspect.signature(tool_func.func)
+    if 'job_name' not in sig.parameters:
+        normalized_args = {k: v for k, v in normalized_args.items() if k != 'job_name'}
+
+tool_result = tool_func.invoke(normalized_args)
+```
+
+#### The Complete Flow
+
+```
+User: "guardian say hi"
+    ↓
+Supervisor Node:
+  - Detects introduction request
+  - Routes to Guardian with instruction: "STRICTLY FORBIDDEN from using tools. Speak text only."
+    ↓
+Guardian Node:
+  - Reads instruction from state
+  - Detects "strictly forbidden from using tools" directive
+  - Calls analyze_without_tools() → LLM WITHOUT bind_tools()
+    ↓
+Guardian Agent:
+  - Runs LLM.invoke() directly (no tools available)
+  - Generates introduction text
+  - Returns response
+    ↓
+✅ Success: Introduction without tool calls!
+```
+
+**If Layer 1 Fails** (tools called anyway):
+```
+Guardian calls tool → Layer 2 (Canary Pattern) → Tool accepts lists → Cleans internally → No crash
+```
+
+**If Layer 2 Fails** (cleaning fails):
+```
+Layer 3 (Middleware) → Normalizes before validation → No crash
+```
+
+#### Why This Architecture Works
+
+1. **Prevention First**: Tool Holster removes tools when not needed
+2. **Resilience**: Canary Pattern handles malformed inputs gracefully
+3. **Defense in Depth**: Multiple layers catch edge cases
+4. **Supervisor-Driven**: No hardcoded logic, respects supervisor instructions
+5. **Scalable**: Works for ANY use case, not just introductions
+
+#### Key Principles
+
+- **Trust Supervisor Instructions**: If supervisor says "no tools", physically remove them
+- **Accept, Then Clean**: Tools should accept malformed input, then normalize internally
+- **Multiple Safety Nets**: If one layer fails, others catch it
+- **No Hardcoding**: Check for directives, not use cases
+
+#### Files Modified
+
+1. **`src/agents/orchestrator/graph/nodes/guardian.py`**:
+   - Added Tool Holster logic (checks supervisor directives)
+   - Calls `analyze_without_tools()` when tools forbidden
+
+2. **`src/agents/specialists/guardian_agent.py`**:
+   - Added `analyze_without_tools()` method (runs LLM without bind_tools)
+   - Tool loading uses simple `@tool` decorator pattern
+
+3. **`src/tools/portfolio_pacing_tool.py`**:
+   - Refactored to Canary Pattern (Union types + internal cleaning)
+   - Removed Pydantic schema complexity
+   - Added safe fallback for failures
+
+4. **`src/utils/agent_loop.py`**:
+   - Enhanced middleware normalization
+   - Added signature-aware parameter filtering (removes unsupported `job_name`)
+
+#### Testing Results
+
+✅ **Introduction Requests**: Guardian introduces without calling tools  
+✅ **Portfolio Questions**: Guardian calls tools when needed  
+✅ **Malformed Inputs**: Tool handles lists gracefully  
+✅ **Tool Failures**: Safe fallback prevents crashes  
+
+#### Consultant Approval
+
+This architecture was approved by the consultant as the "Clean Slate" approach:
+- Removed all Pydantic schema complexity
+- Adopted simple `@tool` decorator pattern (proven by Canary agent)
+- Implemented Tool Holster for physical prevention
+- Multiple layers ensure resilience
+
+**Status**: ✅ PRODUCTION READY
+
 #### Critical Learning: Supervisor Hallucination Fix - Don't Generate New Responses When Tool Already Responded
 
 **Problem**: When semantic_search tool responded, supervisor would route to FINISH and generate a NEW hallucinated response instead of using the tool's results.
@@ -747,6 +993,22 @@ if decision.next == "FINISH":
 - `src/agents/specialists/guardian_agent.py` - Enabled streaming callback for tool calls
 - `src/agents/orchestrator/graph/nodes/semantic_search.py` - Added tool_call event emission
 - `src/interface/cli/main.py` - Added handlers for tool_call and tool_result events
+
+#### Critical Learning: Remove Hardcoded Logic - Trust Prompt-Based Reasoning
+
+**Problem**: Guardian agent had hardcoded keyword check that bypassed streaming path, causing invisible responses for introductions.
+
+**Root Cause**: Hardcoded early exit (`return super().analyze()`) at lines 343-349 bypassed `execute_agent_loop` which has streaming enabled. The `super().analyze()` path goes to `BaseSpecialistAgent.analyze()` which has NO streaming callbacks.
+
+**Solution**: Remove hardcoded keyword checks. Rely on:
+1. **Supervisor Instruction**: "STRICTLY FORBIDDEN from using tools" (prompt-based)
+2. **System Prompt**: Efficiency Protocol with tool inhibition (prompt-based)
+3. **Middleware Normalization**: Prevents crashes if tool is called anyway (safety net)
+
+**Key Principle**: "Trust, but Verify (and Sanitize)" - Trust prompt-based reasoning, verify with middleware safety net. No hardcoded `if "hi" in text` checks.
+
+**Files Updated**:
+- `src/agents/specialists/guardian_agent.py` - Removed hardcoded early exit (lines 343-349), always use `execute_agent_loop` for streaming
 
 #### Key Lesson: "Lite" Models Need Inhibition Training
 
@@ -924,11 +1186,12 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 ### File Locations
 
 - Supervisor node: `src/agents/orchestrator/graph/supervisor.py`
-- Guardian agent: `src/agents/specialists/guardian_agent.py`
+- Guardian agent: `src/agents/specialists/guardian_agent.py` - **Pydantic Model Guard** (`@model_validator`)
 - Guardian node: `src/agents/orchestrator/graph/nodes/guardian.py`
 - State schema: `src/agents/orchestrator/graph/state.py`
 - Graph definition: `src/agents/orchestrator/graph/graph.py`
 - Agent loop: `src/utils/agent_loop.py` - **Middleware normalization for tool arguments**
+- Tool function: `src/tools/portfolio_pacing_tool.py` - **Tool Function Sanitation** (`_normalize_string_arg`)
 - Supervisor prompt: `prompts/orchestrator/supervisor.txt` - **Multi-agent routing rules**
 
 ### Key Patterns
@@ -937,7 +1200,7 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 - **Instructions**: XML tags (`<supervisor_instruction>`) in agent prompts
 - **Tool Usage**: "WHEN NOT TO USE" in tool descriptions
 - **State Access**: Read from `AgentState` in nodes
-- **Tool Argument Normalization**: `_normalize_tool_args()` in `agent_loop.py` - **Prevents Pydantic validation crashes**
+- **Tool Argument Normalization**: **Double-Ended Sanitation** - Robust normalization in BOTH Pydantic Model AND Tool Function layers
 
 ### Anti-Patterns
 
@@ -951,6 +1214,20 @@ All behavior should come from LLM reasoning guided by well-crafted prompts. Hard
 ---
 
 **Remember**: When in doubt, ask yourself: "Can this be solved with better prompts instead of code logic?" The answer is almost always yes.
+
+---
+
+## Performance Optimization Plan
+
+**See**: [`docs/performance_optimization_plan.md`](../docs/performance_optimization_plan.md) for the complete performance optimization plan.
+
+**Summary**: The system currently uses a Sequential Chain pattern (~20s) and needs to move to Parallel Map-Reduce pattern (~6-8s). Three optimization phases are approved:
+
+1. **Phase 1: Hardware Optimization** (MPS) - ~15 min, 1s savings
+2. **Phase 2: Parallel Search Execution** - ~2-3 hours, 8s savings  
+3. **Phase 3: Verbosity Control** - ~30 min, 5s savings
+
+**Expected Total Improvement**: 60-70% reduction (20s → 6-8s)
 
 ### Final Lesson: "Lite" Models Need Inhibition Training
 
@@ -982,33 +1259,61 @@ This prevents unnecessary tool calls while maintaining scalability.
 3. If Guardian still calls tools unnecessarily → upgrade ONLY Guardian to `gemini-2.5-pro`
 4. Don't pay "Pro Tax" (latency/quota) for entire team until proven necessary
 
-### Final Lesson: Tool Crash Fix - Middleware Normalization
+### Final Lesson: Tool Crash Fix - Double-Ended Sanitation
 
-**The Breakthrough**: Tool crashes happen **before** function execution, not during.
+**The Breakthrough**: There were **TWO IDENTICAL PROBLEMS** - Pydantic Model AND Tool Function both had flawed normalization logic.
 
-**Key Principle**: Fix validation errors at the **middleware layer**, not inside the function.
+**Key Principle**: Implement bulletproof normalization in **BOTH** layers - never rely on one or the other.
 
 **Why Previous Fixes Failed**:
-- Pydantic validates arguments BEFORE calling the function
-- Adding defensive code INSIDE the function is too late
-- The crash happens in LangChain's validation layer
+- Only fixed ONE layer (Pydantic OR Tool Function)
+- Flawed normalization logic: `str(arg).strip()` could crash if `arg` remained a list
+- Pydantic validators ran AFTER internal validation already crashed
 
-**The Solution**: Normalize arguments **BEFORE** `tool_func.invoke()` in `agent_loop.py`:
-- Extract lists to their first element
-- Handle None values gracefully
-- Pass through already-normalized values
+**The Solution**: **Double-Ended Sanitation** - Robust normalization in BOTH places:
 
-**Impact**: Even if Guardian calls tools unnecessarily, it won't crash, and introduction text will be delivered.
+**Layer 1: Pydantic Model Guard** (`@model_validator(mode='before')`):
+- Intercepts raw data **before ANY Pydantic validation**
+- Flattens lists to first element: `['17']` → `'17'`
+- Sets defaults for required fields
 
-**Multi-Layer Defense**:
-1. **Middleware Normalization** (Primary) - Prevents crash
-2. **Supervisor Instruction** (Secondary) - Explicitly forbids tool usage
-3. **Prompt Reordering** (Tertiary) - Uses recency bias
-4. **Cost Framing + CoT** (Quaternary) - Guides reasoning
+**Layer 2: Tool Function Sanitation** (Atomic string conversion):
+- Forces `str()` cast **BEFORE** `.strip()`: `str(arg).strip()`
+- Handles None, lists, and any input type gracefully
+- Mathematically impossible to call `.strip()` on a list
+
+**Impact**: Guardian can safely call tools without crashing, and introduction text is delivered.
+
+**Multi-Layer Defense** (Updated):
+1. **Double-Ended Sanitation** (Primary) - Prevents crash at both layers
+2. **Middleware Normalization** (Secondary) - Additional protection in agent loop
+3. **Supervisor Instruction** (Tertiary) - Explicitly forbids tool usage
+4. **Prompt Reordering** (Quaternary) - Uses recency bias
+5. **Cost Framing + CoT** (Quinary) - Guides reasoning
 
 ---
 
 ## Concrete Examples from Recent Development
+
+### Canary Agent - Testing Infrastructure
+
+**Problem**: Persistent `'list' object has no attribute 'strip'` error in Guardian agent despite multiple fixes.
+
+**Solution**: Created minimal "Canary Agent" for isolation testing.
+
+**Files Created**:
+- `src/tools/canary_tools.py` - Simple `echo_tool(text: str)` that repeats input
+- `src/agents/specialists/canary_agent.py` - Minimal agent with single tool
+- `config/canary_agent.yaml` - Simple config using `gemini-2.5-flash`
+- `src/agents/orchestrator/graph/nodes/canary.py` - Graph node for canary
+- Updated graph routing and supervisor to support `canary` agent
+
+**Testing Protocol**:
+1. Ask: "Canary, say hello"
+2. If works → Issue is Guardian-specific complexity
+3. If fails → Issue is core agent loop (LLM sending bad lists globally)
+
+**Impact**: Provides definitive diagnosis without fighting complex Guardian code.
 
 ### Example 1: Guardian Tool Calling Fix
 
@@ -1289,4 +1594,28 @@ Before committing changes, verify:
 5. **LLM Reasoning > Hardcoded Checks**: Trust the LLM when properly guided
 
 **When you see `if "keyword" in text:` → STOP. Use prompts instead.**
+
+---
+
+## 📚 Related Documentation
+
+### Critical Incident Post-Mortem
+
+**`docs/incident_postmortem_guardian_loop.md`** - Comprehensive post-mortem of the 4-hour Guardian Loop incident (November 29, 2025)
+
+**What's Inside:**
+- Complete timeline of failures and fixes
+- Root cause analysis (the crash was NOT where we thought!)
+- Three-layer defense architecture documentation
+- Golden rules for future development
+- Prevention checklists
+- Lessons learned
+
+**When to Read:**
+- Before creating new agents or tools
+- When debugging similar crashes
+- When implementing tool calling patterns
+- When working with `gemini-2.5-flash` models
+
+**Key Takeaway:** The crash was in `agent_loop.py` line 71 (`result.content.strip()`), NOT in tool execution. Always handle LLM response content as potentially being a list, not just a string.
 

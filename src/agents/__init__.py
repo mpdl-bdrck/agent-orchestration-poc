@@ -61,6 +61,7 @@ from .specialists.guardian_agent import GuardianAgent
 from .specialists.specialist_agent import SpecialistAgent
 from .specialists.optimizer_agent import OptimizerAgent
 from .specialists.pathfinder_agent import PathfinderAgent
+from .specialists.canary_agent import CanaryAgent
 
 # Get config directory path
 _config_dir = Path(__file__).parent.parent.parent / "config"
@@ -69,4 +70,5 @@ register_agent('guardian', GuardianAgent, str(_config_dir / "guardian_agent.yaml
 register_agent('specialist', SpecialistAgent, str(_config_dir / "specialist_agent.yaml"))
 register_agent('optimizer', OptimizerAgent, str(_config_dir / "optimizer_agent.yaml"))
 register_agent('pathfinder', PathfinderAgent, str(_config_dir / "pathfinder_agent.yaml"))
+register_agent('canary', CanaryAgent, str(_config_dir / "canary_agent.yaml"))
 

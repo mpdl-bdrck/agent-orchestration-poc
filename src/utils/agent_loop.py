@@ -12,11 +12,55 @@ Used by:
 """
 
 import json
+import logging
+import traceback
 from typing import Any, Optional, List, Dict
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_extract_content(result) -> str:
+    """
+    Safely extract content from LLM result, handling both string and list formats.
+    
+    Gemini (and other LLMs) can return content as:
+    - A string: "Hello world"
+    - A list: [] (empty for tool calls) or [{"type": "text", "text": "Hello"}]
+    
+    Args:
+        result: LLM result object with .content attribute
+        
+    Returns:
+        String content, or empty string if content is list/empty
+    """
+    if not hasattr(result, 'content'):
+        return ""
+    
+    content = result.content
+    
+    if isinstance(content, str):
+        return content.strip() if content else ""
+    elif isinstance(content, list):
+        # Extract text from list of content blocks (Gemini format)
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict):
+                # Handle Gemini's content block format: {"type": "text", "text": "..."}
+                if block.get("type") == "text" and "text" in block:
+                    text_parts.append(str(block["text"]))
+                elif "text" in block:
+                    # Fallback: just look for "text" key
+                    text_parts.append(str(block["text"]))
+            elif isinstance(block, str):
+                text_parts.append(block)
+        return " ".join(text_parts).strip()
+    else:
+        # Fallback: convert to string
+        return str(content) if content else ""
 
 
 def execute_agent_loop(
@@ -63,15 +107,16 @@ def execute_agent_loop(
     while iteration < max_iterations:
         result = llm_with_tools.invoke(messages)
 
-        # Check if LLM has content (final response)
-        has_content = hasattr(result, 'content') and result.content and result.content.strip()
+        # SAFE CONTENT CHECK - Handle both string and list content
+        content_str = _safe_extract_content(result)
+        has_content = bool(content_str)
 
         # Check if LLM wants to use tools
         has_tool_calls = hasattr(result, 'tool_calls') and result.tool_calls
 
         # If we have content and no tool calls, this is the final response
         if has_content and not has_tool_calls:
-            response_text = result.content
+            response_text = content_str
             # Stream the response if enabled
             if stream_response and streaming_callback and response_text:
                 try:
@@ -88,7 +133,7 @@ def execute_agent_loop(
             if has_content and streaming_callback:
                 try:
                     # Emit reasoning before tool execution for debugging/transparency
-                    streaming_callback("reasoning", result.content.strip(), None)
+                    streaming_callback("reasoning", content_str, None)
                 except Exception:
                     pass  # Don't fail if callback errors
             
@@ -97,6 +142,11 @@ def execute_agent_loop(
 
             # Execute each tool call
             for tool_call in result.tool_calls:
+                # 🔍 TRAP LOGGING: Capture raw args from Gemini before any processing
+                print(f"🔍 RAW ARGS: {tool_call.get('args', {})}")
+                print(f"🔍 RAW TYPE: {type(tool_call.get('args', {}))}")
+                print(f"🔍 RAW REPR: {repr(tool_call.get('args', {}))}")
+                
                 tool_name, tool_args, tool_call_id = _extract_tool_call_info(tool_call, job_name)
 
                 # Emit streaming event for tool call
@@ -138,19 +188,108 @@ def execute_agent_loop(
                         logger.debug(f"Failed to load execution instructions: {e}")
                     
                     try:
-                        # Normalize tool arguments BEFORE invoking to prevent Pydantic validation crashes
-                        # LangChain's StructuredTool validates via Pydantic, which crashes if LLM passes lists
+                        # 1. Normalization (Recursive fix confirmed working)
+                        logger.info(f"[{job_name}] 🔧 Raw Args: {tool_args}")
                         normalized_args = _normalize_tool_args(tool_args)
-                        tool_result = tool_func.invoke(normalized_args)
+                        logger.info(f"[{job_name}] ✅ Normalized: {normalized_args}")
+                        
+                        # 2. Filter unsupported args (like job_name) - SKIP SIGNATURE INSPECTION
+                        # Signature inspection might trigger Pydantic validation, so we'll be more aggressive
+                        # Just remove job_name if it exists - the function will reject it if it doesn't accept it
+                        if 'job_name' in normalized_args:
+                            # Try to remove job_name, but don't inspect signature (might trigger validation)
+                            # We'll let the function call fail if job_name isn't accepted
+                            logger.info(f"[{job_name}] Removing job_name from args (will be filtered by function if not accepted)")
+                            normalized_args_no_job = {k: v for k, v in normalized_args.items() if k != 'job_name'}
+                            normalized_args = normalized_args_no_job
+                        
+                        # 3. AGGRESSIVE BYPASS EXECUTION - Try ALL methods before giving up
+                        tool_result = None
+                        bypass_success = False
+                        last_error = None
+                        
+                        # Attempt 1: Standard .func (Direct)
+                        if not bypass_success:
+                            if hasattr(tool_func, 'func'):
+                                try:
+                                    logger.info(f"[{job_name}] 🚀 Attempting bypass via .func")
+                                    tool_result = tool_func.func(**normalized_args)
+                                    bypass_success = True
+                                    logger.info(f"[{job_name}] ✅✅✅ SUCCESS! Bypassed validation via .func")
+                                except Exception as e:
+                                    last_error = e
+                                    logger.warning(f"[{job_name}] ❌ .func failed: {e}")
+                            else:
+                                logger.info(f"[{job_name}] No .func attribute found")
+                        
+                        # Attempt 2: Private ._func (Hidden attribute)
+                        if not bypass_success:
+                            if hasattr(tool_func, '_func'):
+                                try:
+                                    logger.info(f"[{job_name}] 🚀 Attempting bypass via ._func")
+                                    tool_result = tool_func._func(**normalized_args)
+                                    bypass_success = True
+                                    logger.info(f"[{job_name}] ✅✅✅ SUCCESS! Bypassed validation via ._func")
+                                except Exception as e:
+                                    last_error = e
+                                    logger.warning(f"[{job_name}] ❌ ._func failed: {e}")
+                            else:
+                                logger.info(f"[{job_name}] No ._func attribute found")
+                        
+                        # Attempt 3: Try to get function from tool attributes
+                        if not bypass_success:
+                            # Some LangChain versions store it differently
+                            for attr_name in ['_run', 'run', 'function', '_function']:
+                                if hasattr(tool_func, attr_name):
+                                    attr = getattr(tool_func, attr_name)
+                                    if callable(attr):
+                                        try:
+                                            logger.info(f"[{job_name}] 🚀 Attempting bypass via .{attr_name}")
+                                            tool_result = attr(**normalized_args)
+                                            bypass_success = True
+                                            logger.info(f"[{job_name}] ✅✅✅ SUCCESS! Bypassed validation via .{attr_name}")
+                                            break
+                                        except Exception as e:
+                                            last_error = e
+                                            logger.warning(f"[{job_name}] ❌ .{attr_name} failed: {e}")
+                        
+                        # Attempt 4: Fallback to invoke (The Crash Zone) - ONLY IF ALL BYPASSES FAILED
+                        if not bypass_success:
+                            logger.error(f"[{job_name}] ⚠️⚠️⚠️ ALL BYPASS ATTEMPTS FAILED! Falling back to invoke(). CRASH RISK HIGH!")
+                            logger.error(f"[{job_name}] Tool type: {type(tool_func)}")
+                            logger.error(f"[{job_name}] Tool dir: {[x for x in dir(tool_func) if not x.startswith('__')][:10]}")
+                            logger.error(f"[{job_name}] Has .func: {hasattr(tool_func, 'func')}")
+                            logger.error(f"[{job_name}] Has ._func: {hasattr(tool_func, '_func')}")
+                            logger.error(f"[{job_name}] Last error: {last_error}")
+                            logger.error(f"[{job_name}] Normalized args: {normalized_args}")
+                            # This will likely crash, but at least we'll have full diagnostics
+                            tool_result = tool_func.invoke(normalized_args)
                         tool_calls.append({
                             "tool": tool_name,
                             "args": tool_args,
                             "result": tool_result
                         })
 
+                        # Emit tool result for visibility
+                        if streaming_callback:
+                            try:
+                                streaming_callback("tool_result", str(tool_result), {
+                                    "tool": tool_name,
+                                    "result": tool_result
+                                })
+                            except Exception:
+                                pass  # Don't fail if callback errors
+
                         # Add tool result message for next iteration
                         messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
                     except Exception as e:
+                        # 🔍 TRAP LOGGING: Full stack trace dump
+                        print("=" * 80)
+                        print("🔍 FULL STACK TRACE - TOOL EXECUTION ERROR:")
+                        print("=" * 80)
+                        traceback.print_exc()  # FORCE PRINT TO CONSOLE
+                        print("=" * 80)
+                        
                         error_msg = f"Error executing tool {tool_name}: {str(e)}"
                         tool_calls.append({
                             "tool": tool_name,
@@ -177,7 +316,7 @@ def execute_agent_loop(
             try:
                 messages.append(HumanMessage(content="Please provide your answer based on the tool results above."))
                 final_result = llm_with_tools.invoke(messages)
-                if hasattr(final_result, 'content') and final_result.content:
+                if _safe_extract_content(final_result):
                     result = final_result
                     break
             except Exception:
@@ -185,10 +324,10 @@ def execute_agent_loop(
             break
 
     # If we hit max iterations, try to get a final response anyway
-    if iteration >= max_iterations and (not hasattr(result, 'content') or not result.content):
+    if iteration >= max_iterations and not _safe_extract_content(result):
         try:
             final_result = llm_with_tools.invoke(messages)
-            if hasattr(final_result, 'content') and final_result.content:
+            if _safe_extract_content(final_result):
                 result = final_result
         except Exception:
             pass
@@ -197,14 +336,24 @@ def execute_agent_loop(
     if not response_text:
         if result is None:
             response_text = "I apologize, but I didn't receive a response. Please try rephrasing your query."
-        elif hasattr(result, 'content'):
-            response_text = result.content if result.content else "I apologize, but I received an empty response. Please try rephrasing your query."
         else:
-            response_text = str(result) if result else "I apologize, but I received an empty response. Please try rephrasing your query."
+            content_str = _safe_extract_content(result)
+            response_text = content_str if content_str else "I apologize, but I received an empty response. Please try rephrasing your query."
 
     # Ensure we have a non-empty response
+    # If we have tool results but no final response, use the last tool result
     if not response_text or response_text.strip() == "":
-        response_text = "I apologize, but I didn't receive a meaningful response. Please try rephrasing your query or check if the database contains the requested information."
+        if tool_calls and len(tool_calls) > 0:
+            # Use the last successful tool result as the response
+            last_tool_call = tool_calls[-1]
+            if 'result' in last_tool_call and last_tool_call['result']:
+                response_text = str(last_tool_call['result'])
+            elif 'error' not in last_tool_call:
+                response_text = "I apologize, but I didn't receive a meaningful response. Please try rephrasing your query or check if the database contains the requested information."
+            else:
+                response_text = "I apologize, but I didn't receive a meaningful response. Please try rephrasing your query or check if the database contains the requested information."
+        else:
+            response_text = "I apologize, but I didn't receive a meaningful response. Please try rephrasing your query or check if the database contains the requested information."
 
     # Parse tool results data for conversation history
     tool_results_data = _parse_tool_results_for_history(tool_calls)
@@ -218,36 +367,42 @@ def execute_agent_loop(
 
 def _normalize_tool_args(tool_args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Normalize tool arguments to handle list inputs from eager LLMs.
+    Robustly normalizes arguments before Pydantic validation.
+    
+    Handles deep nesting: [['17']] -> '17'.
     
     LangChain's StructuredTool validates arguments via Pydantic before calling the function.
-    When LLM passes lists (e.g., account_id: ["17"]) instead of strings, Pydantic's internal
-    validation calls .strip() on the list, causing: 'list' object has no attribute 'strip'
+    When LLM passes lists (e.g., account_id: ["17"] or [['17']]) instead of strings, 
+    Pydantic's internal validation calls .strip() on the list, causing: 
+    'list' object has no attribute 'strip'
     
     This function normalizes arguments BEFORE Pydantic validation occurs, preventing crashes.
     
     Args:
-        tool_args: Dictionary of tool arguments (may contain lists)
+        tool_args: Dictionary of tool arguments (may contain nested lists)
         
     Returns:
-        Normalized dictionary with lists converted to their first element
+        Normalized dictionary with all lists recursively unwrapped to primitives
     """
+    def unwrap(val: Any) -> Any:
+        """Recursively unwrap nested lists until we hit a primitive value."""
+        if isinstance(val, list):
+            return unwrap(val[0]) if len(val) > 0 else None
+        return val
+    
     normalized = {}
     for key, value in tool_args.items():
-        if value is None:
-            normalized[key] = value
-        elif isinstance(value, list):
-            # Extract first element if list (LLM sometimes passes ["value"] instead of "value")
-            if len(value) > 0:
-                normalized[key] = value[0]
-            else:
-                normalized[key] = None
-        elif isinstance(value, (str, int, float, bool)):
-            # Already normalized - pass through
-            normalized[key] = value
+        # 1. Unwrap recursively until we hit a primitive
+        unwrapped = unwrap(value)
+        
+        # 2. Handle types safely
+        if unwrapped is None:
+            normalized[key] = None
+        elif isinstance(unwrapped, (str, int, float, bool)):
+            normalized[key] = unwrapped
         else:
-            # Convert to string as fallback
-            normalized[key] = str(value) if value else None
+            # Fallback for complex objects -> string
+            normalized[key] = str(unwrapped)
     
     return normalized
 
@@ -286,9 +441,13 @@ def _extract_tool_call_info(tool_call: Any, job_name: str) -> tuple[str, dict[st
         if hasattr(tool_call, '__dict__'):
             tool_args = tool_call.__dict__.get('args', tool_args)
 
-    # Ensure job_name is always included in tool args
+    # Ensure job_name is included in tool args ONLY if the tool accepts it
+    # Not all tools need job_name (e.g., echo_tool, canary tools)
     if not isinstance(tool_args, dict):
         tool_args = {}
+    
+    # Only inject job_name if it's not already present
+    # Tools that don't accept job_name will have it filtered out during normalization
     if 'job_name' not in tool_args:
         tool_args['job_name'] = job_name
 

@@ -340,24 +340,58 @@ Route to appropriate agent or use FINISH if no agents needed."""
             agent_responses = final_state.get("agent_responses", [])
             messages = final_state.get("messages", [])
             
+            logger.info(f"🔍 Orchestrator: agent_responses count={len(agent_responses)}, messages count={len(messages)}")
+            logger.info(f"🔍 Orchestrator: agent_responses={[r.get('agent') for r in agent_responses]}")
+            
             if agent_responses:
+                # Filter out orchestrator responses - they're duplicates
+                actual_agent_responses = [r for r in agent_responses if r.get("agent") != "orchestrator"]
+                logger.info(f"🔍 Orchestrator: actual_agent_responses count={len(actual_agent_responses)}, agents={[r.get('agent') for r in actual_agent_responses]}")
+                
                 # Check if we have supervisor response (direct answer)
-                if len(agent_responses) == 1 and agent_responses[0].get("agent") == "supervisor":
-                    return agent_responses[0].get("response", "No response from supervisor.")
+                if len(actual_agent_responses) == 1 and actual_agent_responses[0].get("agent") == "supervisor":
+                    logger.debug("🔍 Orchestrator: Returning supervisor response")
+                    return actual_agent_responses[0].get("response", "No response from supervisor.")
                 
                 # Check if we have semantic_search response only (semantic_search is a service, not an agent)
-                if len(agent_responses) == 1 and (agent_responses[0].get("agent") == "semantic_search" or agent_responses[0].get("service") == "semantic_search"):
+                if len(actual_agent_responses) == 1 and (actual_agent_responses[0].get("agent") == "semantic_search" or actual_agent_responses[0].get("service") == "semantic_search"):
                     # For semantic_search, return the response directly (it's already formatted)
-                    return agent_responses[0].get("response", "No response from semantic search.")
+                    logger.debug("🔍 Orchestrator: Returning semantic_search response")
+                    return actual_agent_responses[0].get("response", "No response from semantic search.")
                 
-                # Synthesize agent responses for multiple agents
-                synthesized = self._synthesize_agent_responses(agent_responses, question)
-                return synthesized
+                # For ALL single agent responses, return empty string
+                # Agent response was already displayed via streaming callback
+                # CLI will handle empty response gracefully (won't show duplicate)
+                if len(actual_agent_responses) == 1:
+                    logger.info(f"✅ Orchestrator: Single agent response from {actual_agent_responses[0].get('agent')} - returning empty string to prevent duplicate")
+                    return ""
+                
+                # Synthesize agent responses for multiple agents (only if we have 2+ actual agent responses)
+                if len(actual_agent_responses) > 1:
+                    synthesized = self._synthesize_agent_responses(actual_agent_responses, question)
+                    return synthesized
+                else:
+                    # Shouldn't reach here, but safety check
+                    logger.warning(f"Unexpected state: {len(actual_agent_responses)} agent responses")
+                    return ""
             elif messages:
                 # Extract from messages if no agent_responses
+                # BUT: Check if messages contain agent responses that were already streamed
+                # If so, return empty string to prevent duplicate display
+                logger.warning(f"⚠️ Orchestrator: No agent_responses, falling back to messages. This should NOT happen if Guardian responded!")
                 last_message = messages[-1]
                 if hasattr(last_message, 'content'):
-                    return last_message.content
+                    # Check if this message is from an agent that already responded via streaming
+                    # If agent_responses is empty but messages exist, it might be an orchestrator response
+                    # Filter out orchestrator responses that duplicate agent responses
+                    message_content = last_message.content
+                    # If we have agent_responses, don't use messages (they're duplicates)
+                    if agent_responses:
+                        # Agent already responded via streaming - return empty
+                        logger.warning("⚠️ Orchestrator: Agent responses exist but also messages exist - ignoring messages to prevent duplicate")
+                        return ""
+                    logger.warning(f"⚠️ Orchestrator: Returning message content (no agent_responses): {message_content[:100]}...")
+                    return message_content
                 return str(last_message)
             else:
                 return "No response received."

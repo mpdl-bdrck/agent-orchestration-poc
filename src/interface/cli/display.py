@@ -31,6 +31,7 @@ class GlassBoxDisplay:
         'specialist': 'yellow',  # 🔧 Wrench - technical/attention
         'optimizer': 'magenta',  # 🎯 Target - precision optimization
         'pathfinder': 'green',   # 🧭 Compass - navigation/guidance
+        'canary': 'yellow',      # 🐤 Canary - testing/isolation
         'orchestrator': 'white'  # 🧠 Brain - coordination/intelligence
     }
     
@@ -40,6 +41,7 @@ class GlassBoxDisplay:
         'specialist': '🔧',
         'optimizer': '🎯',
         'pathfinder': '🧭',
+        'canary': '🐤',
         'orchestrator': '🧠'
     }
     

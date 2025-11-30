@@ -27,6 +27,7 @@ def get_agent_emoji(agent_name: str) -> str:
         'specialist': '🔧',     # Wrench for fixing issues
         'optimizer': '🎯',      # Target for precision optimization
         'pathfinder': '🧭',     # Compass for navigation
+        'canary': '🐤',         # Canary for testing/isolation
         # Legacy agents (for backward compatibility)
         'character_analyzer': '👥',
         'theme_analyzer': '🎭',

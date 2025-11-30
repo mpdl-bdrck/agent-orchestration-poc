@@ -86,12 +86,27 @@ class CLIChat:
             self.display.show_tool_call(tool_name, args)
         elif event_type == "tool_result":
             tool_name = data.get('tool', '') if data else ''
-            # Show brief tool result summary
+            tool_output = data.get('result', message) if data else message
+            
+            # Show actual tool output for debugging/transparency
             if tool_name == 'analyze_portfolio_pacing':
-                self.display.show_reasoning("✅ Portfolio analysis complete")
+                # Display the actual tool output
+                self.display.show_reasoning(f"📊 Tool Output ({tool_name}):")
+                # Show tool output in a readable format
+                if isinstance(tool_output, str):
+                    # Truncate if too long, but show enough to see what tool returned
+                    display_output = tool_output[:500] + "..." if len(tool_output) > 500 else tool_output
+                    self.display.show_reasoning(f"   {display_output}")
+                else:
+                    self.display.show_reasoning(f"   {str(tool_output)[:500]}")
             elif tool_name == 'semantic_search':
                 count = data.get('count', 0) if data else 0
                 self.display.show_reasoning(f"✅ Semantic search found {count} results")
+            else:
+                # Generic tool result display
+                if tool_output:
+                    display_output = str(tool_output)[:300] + "..." if len(str(tool_output)) > 300 else str(tool_output)
+                    self.display.show_reasoning(f"📊 Tool Output ({tool_name}): {display_output}")
         elif event_type == "agent_response":
             # Agent response using Rich Live + Panel
             agent_name = data.get('agent', '') if data else ''
@@ -234,15 +249,23 @@ class CLIChat:
                     logger.debug(f"Error closing orchestrator streaming context: {e}")
                 self._orchestrator_streaming_context = None
             
-            # If agent responses were shown via streaming, don't show orchestrator response again
-            # Otherwise, show the orchestrator response
-            if not hasattr(self, '_agent_responses_shown') or not self._agent_responses_shown:
+            # CRITICAL: If agent responses were shown via streaming, NEVER show orchestrator response
+            # Also skip if response is empty (single agent responses that were already displayed)
+            # The orchestrator should return empty string for single agent responses
+            if hasattr(self, '_agent_responses_shown') and self._agent_responses_shown:
+                # Agent already responded via streaming - DO NOT show orchestrator response (it's a duplicate)
+                logger.debug("Agent response already shown via streaming - skipping orchestrator response to prevent duplicate")
+                self.display.console.print()
+            elif response and response.strip():
+                # Only show orchestrator response if no agent responded AND response is not empty
                 if not hasattr(self, '_last_streamed') or not self._last_streamed:
                     # Show orchestrator response in box (non-streamed)
+                    logger.warning(f"⚠️ CLI: Showing orchestrator response even though agent responded. Response length: {len(response)}")
                     self.display.show_orchestrator_response(response)
                 # If streamed, box was already closed above
             else:
-                # Agent responses were already shown, just add spacing
+                # Response is empty - just add spacing
+                logger.debug("Orchestrator returned empty response - skipping display")
                 self.display.console.print()
             
             # Show tool usage and agent calls in compact footer format

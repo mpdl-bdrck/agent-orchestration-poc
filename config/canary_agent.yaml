@@ -1,0 +1,30 @@
+# Canary Agent Configuration
+agent_id: "canary"
+agent_name: "Canary Agent"
+agent_type: "specialist"
+version: "1.0.0"
+
+# LLM Configuration
+llm:
+  provider: "gemini"
+  model: "gemini-2.5-flash"  # Simple, reliable model for testing
+  temperature: 0.7
+  max_tokens: 1000
+
+# Prompt Templates
+prompts:
+  system: "prompts/canary_agent/system.txt"
+  user: "prompts/canary_agent/user.txt"
+
+# Input/Output Fields
+input_fields:
+  - "question"
+  - "context"
+
+output_fields:
+  - "answer"
+
+# Validation Rules
+validation:
+  required_fields:
+    - "answer"

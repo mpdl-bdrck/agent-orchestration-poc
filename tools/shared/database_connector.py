@@ -14,6 +14,16 @@ import psycopg2
 import boto3
 from typing import List, Any, Optional
 
+# Load environment variables from .env file if available
+try:
+    from dotenv import load_dotenv
+    # Try loading from project root and tools directory
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv(os.path.join(project_root, '.env'))
+    load_dotenv(os.path.join(project_root, 'tools', '.env'))
+except ImportError:
+    pass  # dotenv not available, use system environment variables
+
 
 class DatabaseConnector:
     """Manages PostgreSQL and Redshift database connections"""
@@ -26,14 +36,30 @@ class DatabaseConnector:
     def _connect_databases(self):
         """Initialize PostgreSQL and Redshift connections"""
         try:
-            # PostgreSQL connection
-            self.postgres_conn = psycopg2.connect(
-                host=os.getenv('POSTGRES_HOST'),
-                port=int(os.getenv('POSTGRES_PORT', 5432)),
-                database=os.getenv('POSTGRES_DB'),
-                user=os.getenv('POSTGRES_USER'),
-                password=os.getenv('POSTGRES_PASSWORD')
-            )
+            # PostgreSQL connection - prioritize POSTGRES_* vars (for exchange DB) over DATABASE_URL (knowledge_base)
+            # This matches the original tool's behavior
+            postgres_url = os.getenv('POSTGRES_URL')
+            postgres_host = os.getenv('POSTGRES_HOST')
+            
+            if postgres_url:
+                # Use POSTGRES_URL if explicitly set (for exchange database)
+                self.postgres_conn = psycopg2.connect(postgres_url)
+            elif postgres_host:
+                # Use individual POSTGRES_* vars if POSTGRES_HOST is set (for exchange database)
+                self.postgres_conn = psycopg2.connect(
+                    host=postgres_host,
+                    port=int(os.getenv('POSTGRES_PORT', 5432)),
+                    database=os.getenv('POSTGRES_DB'),
+                    user=os.getenv('POSTGRES_USER'),
+                    password=os.getenv('POSTGRES_PASSWORD')
+                )
+            else:
+                # Fall back to DATABASE_URL (for knowledge_base - vector DB)
+                database_url = os.getenv('DATABASE_URL')
+                if database_url:
+                    self.postgres_conn = psycopg2.connect(database_url)
+                else:
+                    raise ValueError("No PostgreSQL connection configured. Set POSTGRES_URL, POSTGRES_HOST, or DATABASE_URL")
             print("✅ PostgreSQL connected")
             
             # Redshift connection (use AWS profile like MCP)

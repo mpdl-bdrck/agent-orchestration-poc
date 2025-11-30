@@ -48,6 +48,9 @@ fi
 
 echo ""
 
+# Enable Guardian tools by default
+export GUARDIAN_TOOLS_ENABLED=true
+
 # Start the CLI chat
 echo "🚀 Starting Agent Orchestration POC CLI..."
 echo "📚 Context Knowledge Base: $CONTEXT_ID"

@@ -12,6 +12,7 @@ from .nodes.guardian import create_guardian_node
 from .nodes.specialist import create_specialist_node
 from .nodes.optimizer import create_optimizer_node
 from .nodes.pathfinder import create_pathfinder_node
+from .nodes.canary import create_canary_node
 from .nodes.semantic_search import create_semantic_search_node
 
 
@@ -48,6 +49,7 @@ def create_agent_graph(
     specialist = create_specialist_node(call_specialist_agent_func, embedding_model, get_agent_func, streaming_callback)
     optimizer = create_optimizer_node(call_specialist_agent_func, embedding_model, get_agent_func, streaming_callback)
     pathfinder = create_pathfinder_node(call_specialist_agent_func, embedding_model, get_agent_func, streaming_callback)
+    canary = create_canary_node(call_specialist_agent_func, embedding_model, get_agent_func, streaming_callback)
     
     # Create graph
     workflow = StateGraph(AgentState)
@@ -59,6 +61,7 @@ def create_agent_graph(
     workflow.add_node("specialist", specialist)
     workflow.add_node("optimizer", optimizer)
     workflow.add_node("pathfinder", pathfinder)
+    workflow.add_node("canary", canary)
     
     # Set entry point
     workflow.set_entry_point("supervisor")
@@ -81,6 +84,7 @@ def create_agent_graph(
             "specialist": "specialist",
             "optimizer": "optimizer",
             "pathfinder": "pathfinder",
+            "canary": "canary",
             END: END
         }
     )
@@ -91,6 +95,7 @@ def create_agent_graph(
     workflow.add_edge("specialist", "supervisor")
     workflow.add_edge("optimizer", "supervisor")
     workflow.add_edge("pathfinder", "supervisor")
+    workflow.add_edge("canary", "supervisor")
     
     # Compile and return
     return workflow.compile()

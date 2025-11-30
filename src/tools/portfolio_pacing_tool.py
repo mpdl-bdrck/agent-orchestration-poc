@@ -1,412 +1,543 @@
 """
-Portfolio Pacing Tool Wrapper for Guardian Agent
-================================================
+Portfolio Pacing Tool
+====================
 
-Wraps campaign-portfolio-pacing tool by calling the shell script (which handles AWS SSO).
+Analyzes portfolio pacing and health using CampaignSpendAnalyzer from tools/campaign-portfolio-pacing.
+
+How it works:
+1. Discovers campaigns: Queries PostgreSQL to find campaigns for the account/advertiser
+2. Collects daily data: Queries Redshift to get daily spend/impression data for those campaigns
+3. Performs pandas rollups: Creates 6 rollup views using pandas:
+   - line_items_daily: Daily spend/impressions per line item
+   - line_items_total: Total spend/impressions per line item
+   - campaigns_daily: Daily spend/impressions per campaign
+   - campaigns_total: Total spend/impressions per campaign
+   - portfolio_daily: Daily spend/impressions at portfolio level
+   - portfolio_total: Total spend/impressions at portfolio level
+
+Requires AWS SSO authentication and database connection.
 """
-import subprocess
-import json
 import os
+import sys
+import logging
 import pandas as pd
-from pathlib import Path
-from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+import pytz
+from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
+
+# Import CampaignSpendAnalyzer from tools/campaign-portfolio-pacing
+# LAZY LOAD ONLY - don't import at module level to avoid import cache corruption
+# This prevents Python's import system from getting corrupted when the import fails
+CampaignSpendAnalyzer = None
+REAL_DATA_AVAILABLE = False
 
 
-def analyze_portfolio_pacing(
-    account_id: str,
-    advertiser_filter: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    campaign_start: Optional[str] = None,
-    campaign_end: Optional[str] = None,
-    campaign_budget: Optional[float] = None
-) -> str:
+def _safe_str(val) -> str:
+    """Safely convert any input to string, handling simple lists."""
+    if val is None:
+        return ""
+    if isinstance(val, list) and len(val) > 0:
+        return str(val[0]).strip()
+    return str(val).strip()
+
+
+def _calculate_pacing_analysis(
+    portfolio_daily: pd.DataFrame,
+    campaign_start: str,
+    campaign_end: str,
+    campaign_budget: float,
+    client_config: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
-    Analyze portfolio pacing by calling the shell script (which handles AWS SSO).
+    Calculate pacing analysis accounting for PST timezone and partial days.
     
     Args:
-        account_id: Account ID to analyze
-        advertiser_filter: Optional advertiser name filter
-        start_date: Optional start date for data collection
-        end_date: Optional end date for data collection
-        campaign_start: Campaign start date for pacing calculations
-        campaign_end: Campaign end date for pacing calculations
-        campaign_budget: Total campaign budget for pacing calculations
+        portfolio_daily: DataFrame with 'date' and 'spend' columns
+        campaign_start: Campaign start date (YYYY-MM-DD)
+        campaign_end: Campaign end date (YYYY-MM-DD)
+        campaign_budget: Total campaign budget
+        client_config: Client configuration dict with timezone info
     
     Returns:
-        JSON string with portfolio insights
+        Dict with pacing metrics
     """
-    # Defensive coding: handle list inputs from eager LLMs
-    def _normalize_string_arg(arg, default=None):
-        """Normalize argument to string, handling list inputs."""
-        if arg is None:
-            return default
-        if isinstance(arg, list):
-            if len(arg) > 0:
-                arg = arg[0]
-            else:
-                return default
-        return str(arg).strip() if arg else default
-    
-    def _normalize_float_arg(arg, default=None):
-        """Normalize argument to float, handling list inputs."""
-        if arg is None:
-            return default
-        if isinstance(arg, list):
-            if len(arg) > 0:
-                arg = arg[0]
-            else:
-                return default
-        try:
-            return float(arg) if arg else default
-        except (ValueError, TypeError):
-            return default
-    
-    # Normalize all string arguments
-    account_id = _normalize_string_arg(account_id, "17")
-    advertiser_filter = _normalize_string_arg(advertiser_filter)
-    start_date = _normalize_string_arg(start_date)
-    end_date = _normalize_string_arg(end_date)
-    campaign_start = _normalize_string_arg(campaign_start)
-    campaign_end = _normalize_string_arg(campaign_end)
-    campaign_budget = _normalize_float_arg(campaign_budget)
-    
-    # Get absolute path to the shell script
-    tools_dir = (Path(__file__).parent.parent.parent / "tools").resolve()
-    script_path = tools_dir / "campaign-portfolio-pacing" / "run_campaign_portfolio_pacing.sh"
-    
-    if not script_path.exists():
-        return json.dumps({
-            "status": "error",
-            "error": "Script not found",
-            "message": f"Portfolio analysis script not found at {script_path}"
-        })
-    
-    # Build command - use --no-publish-sheets to skip Sheets publishing
-    cmd = [str(script_path), account_id]
-    
-    if advertiser_filter:
-        cmd.append(advertiser_filter)
-    
-    if start_date:
-        cmd.extend(["--start-date", start_date])
-    
-    if end_date:
-        cmd.extend(["--end-date", end_date])
-    
-    if campaign_start:
-        cmd.extend(["--campaign-start", campaign_start])
-    
-    if campaign_end:
-        cmd.extend(["--campaign-end", campaign_end])
-    
-    if campaign_budget:
-        cmd.extend(["--campaign-budget", str(campaign_budget)])
-    
-    # Skip Sheets publishing - we just want the CSV data
-    cmd.append("--no-publish-sheets")
-    
     try:
-        # Run the script - change to script directory so relative paths work
-        script_dir = script_path.parent
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=str(script_dir),
-            timeout=300  # 5 minute timeout
-        )
+        # Get timezone from client config (default to PST for Tricoast)
+        if client_config:
+            tz_display = client_config.get('timezone', 'PST')  # For display (PST/PDT/etc)
+            tz_str = client_config.get('timezone_full') or client_config.get('timezone', 'America/Los_Angeles')
+            tz_map = {
+                'PST': 'America/Los_Angeles',
+                'PDT': 'America/Los_Angeles',
+                'EST': 'America/New_York',
+                'EDT': 'America/New_York',
+            }
+            tz_str = tz_map.get(tz_str.upper(), tz_str)
+        else:
+            tz_display = 'PST'
+            tz_str = 'America/Los_Angeles'
         
-        if result.returncode != 0:
-            # Combine stdout and stderr for error detection
-            combined_output = result.stdout + result.stderr
+        pst_tz = pytz.timezone(tz_str)
+        now_pst = datetime.now(pst_tz)
+        today_pst = now_pst.date()
+        
+        # Parse campaign dates
+        start_date = datetime.strptime(campaign_start, '%Y-%m-%d').date()
+        end_date = datetime.strptime(campaign_end, '%Y-%m-%d').date()
+        total_days = (end_date - start_date).days + 1
+        
+        # Ensure portfolio_daily has date column as date type
+        portfolio_daily = portfolio_daily.copy()
+        if 'date' in portfolio_daily.columns:
+            portfolio_daily['date'] = pd.to_datetime(portfolio_daily['date']).dt.date
+        
+        # Filter to campaign date range
+        filtered = portfolio_daily[
+            (portfolio_daily['date'] >= start_date) & 
+            (portfolio_daily['date'] <= end_date)
+        ].copy()
+        
+        if len(filtered) == 0:
+            return {
+                'error': 'No data found in campaign date range'
+            }
+        
+        # Calculate total spend
+        total_spend = float(filtered['spend'].sum())
+        
+        # Get last data date
+        last_data_date = filtered['date'].max()
+        
+        # Determine if last day is partial
+        is_partial_day = False
+        partial_day_fraction = 0.0
+        
+        if last_data_date == today_pst:
+            # Last day is today - calculate partial day fraction
+            hours_elapsed = now_pst.hour + (now_pst.minute / 60.0) + (now_pst.second / 3600.0)
+            partial_day_fraction = max(0.0, min(1.0, hours_elapsed / 24.0))  # Clamp between 0 and 1
+            is_partial_day = True
+            days_passed = (last_data_date - start_date).days + partial_day_fraction
+        else:
+            # Last day is complete
+            days_passed = (last_data_date - start_date).days + 1
+        
+        # Calculate pacing metrics
+        expected_daily_rate = campaign_budget / total_days
+        expected_spend = expected_daily_rate * days_passed
+        actual_daily_rate = total_spend / days_passed if days_passed > 0 else 0
+        projected_final_spend = actual_daily_rate * total_days
+        remaining_budget = campaign_budget - total_spend
+        budget_utilization_pct = (total_spend / campaign_budget) * 100 if campaign_budget > 0 else 0
+        days_remaining = total_days - days_passed
+        required_daily_rate = remaining_budget / days_remaining if days_remaining > 0 else 0
+        
+        # Calculate variance
+        spend_variance = total_spend - expected_spend
+        variance_pct = ((total_spend - expected_spend) / expected_spend) * 100 if expected_spend > 0 else 0
+        
+        # Determine pacing status
+        if abs(variance_pct) < 2:
+            status = "ON PACE"
+            emoji = "🟡"
+        elif variance_pct > 0:
+            status = "AHEAD"
+            emoji = "🟢"
+        else:
+            if abs(variance_pct) < 5:
+                status = "SLIGHTLY BEHIND"
+            else:
+                status = "BEHIND"
+            emoji = "🔴"
+        
+        return {
+            'total_spend': total_spend,
+            'budget': campaign_budget,
+            'remaining_budget': remaining_budget,
+            'budget_utilization_pct': budget_utilization_pct,
+            'days_passed': days_passed,
+            'full_days': int(days_passed),
+            'partial_day_fraction': partial_day_fraction,
+            'total_days': total_days,
+            'days_remaining': days_remaining,
+            'expected_daily_rate': expected_daily_rate,
+            'expected_spend': expected_spend,
+            'actual_daily_rate': actual_daily_rate,
+            'projected_final_spend': projected_final_spend,
+            'required_daily_rate': required_daily_rate,
+            'spend_variance': spend_variance,
+            'variance_pct': variance_pct,
+            'pacing_status': status,
+            'pacing_emoji': emoji,
+            'last_data_date': last_data_date,
+            'is_partial_day': is_partial_day,
+            'start_date': start_date,
+            'end_date': end_date,
+            'timezone': tz_str,
+            'timezone_display': tz_display
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating pacing analysis: {e}", exc_info=True)
+        return {'error': str(e)}
 
-            # Check errors in order of specificity (most specific first)
 
-            # 1. Check if it's a missing module/dependency error (most specific)
-            if "ModuleNotFoundError" in combined_output or "ImportError" in combined_output or "No module named" in combined_output:
-                return json.dumps({
-                    "status": "error",
-                    "error": "Missing Python dependencies",
-                    "message": "The portfolio analysis tool is missing required Python modules. Please ensure all dependencies are installed in the virtual environment.",
-                    "user_message": "I'm unable to analyze your portfolio because some required components are missing. Please check the tool installation or contact support.",
-                    "technical_details": combined_output[:500]
-                })
-
-            # 2. Check if it's a database error
-            if ("database" in combined_output.lower() or
-                "connection" in combined_output.lower() or
-                "PostgreSQL" in combined_output or
-                "NoneType" in combined_output or
-                "cursor" in combined_output):
-                return json.dumps({
-                    "status": "error",
-                    "error": "Database connection required",
-                    "message": "I cannot analyze the portfolio at this time because the database connection is not available. The portfolio analysis tool requires a PostgreSQL database connection to retrieve campaign data. Please ensure the database is running and properly configured.",
-                    "user_message": "I'm unable to analyze your portfolio right now because the database connection is unavailable. This tool requires access to the campaign database to retrieve portfolio data. Please check your database configuration or contact support.",
-                    "technical_details": combined_output[:500]
-                })
-
-            # 3. Generic error fallback
-            return json.dumps({
-                "status": "error",
-                "error": f"Script execution failed (exit code {result.returncode})",
-                "message": f"Portfolio analysis script failed. Please check the tool configuration and dependencies.",
-                "user_message": f"I encountered an issue while analyzing your portfolio. The analysis tool reported an error.",
-                "technical_details": combined_output[:500]
-            })
+def _format_portfolio_results(
+    result_data: dict,
+    campaign_start: str,
+    campaign_end: str,
+    campaign_budget: float,
+    client_config: Dict[str, Any] = None
+) -> str:
+    """
+    Format analysis results with comprehensive pacing analysis for November campaign.
+    """
+    try:
+        rollups = result_data.get('rollups', {})
         
-        # Parse CSV outputs from reports directory
-        # Reports are written to tools/reports/ (relative to project root)
-        # script_dir is tools/campaign-portfolio-pacing/, so reports are at tools/reports/
-        # Get the tools directory (parent of script_dir)
-        tools_dir = script_dir.parent
-        reports_dir = tools_dir / "reports"
+        # Get portfolio_daily rollup
+        portfolio_daily = rollups.get('portfolio_daily')
         
-        if not reports_dir.exists():
-            return json.dumps({
-                "status": "error",
-                "error": "Reports directory not found",
-                "message": "Analysis completed but no reports directory was created"
-            })
+        if portfolio_daily is None or len(portfolio_daily) == 0:
+            return "❌ No portfolio daily data available"
         
-        # Load portfolio rollup CSVs
-        portfolio_total_path = reports_dir / "portfolio_total.csv"
-        portfolio_daily_path = reports_dir / "portfolio_daily.csv"
-        
-        portfolio_total = None
-        portfolio_daily = None
-        
-        if portfolio_total_path.exists():
-            try:
-                portfolio_total = pd.read_csv(portfolio_total_path)
-            except Exception as e:
-                return json.dumps({
-                    "status": "error",
-                    "error": f"Failed to parse portfolio_total.csv: {str(e)}",
-                    "message": "Analysis completed but failed to parse results"
-                })
-        
-        if portfolio_daily_path.exists():
-            try:
-                portfolio_daily = pd.read_csv(portfolio_daily_path)
-            except Exception as e:
-                # Non-critical - daily data might not be available
-                pass
-        
-        # Extract insights from CSV data
-        insights = _extract_portfolio_insights(
-            portfolio_total=portfolio_total,
+        # Calculate pacing analysis
+        pacing = _calculate_pacing_analysis(
             portfolio_daily=portfolio_daily,
             campaign_start=campaign_start,
             campaign_end=campaign_end,
-            campaign_budget=campaign_budget
+            campaign_budget=campaign_budget,
+            client_config=client_config
         )
         
-        # Get advertiser name from portfolio_total if available
-        advertiser_name = advertiser_filter or "Unknown"
-        campaigns_analyzed = 0
+        if pacing.get('error'):
+            return f"❌ Error calculating pacing: {pacing['error']}"
         
-        if portfolio_total is not None and not portfolio_total.empty:
-            # Try to extract advertiser name and campaign count from the data
-            if 'advertiser_name' in portfolio_total.columns:
-                advertiser_name = str(portfolio_total.iloc[0]['advertiser_name'])
-            if 'campaign_count' in portfolio_total.columns:
-                campaigns_analyzed = int(portfolio_total.iloc[0]['campaign_count'])
+        # Build comprehensive pacing report
+        lines = []
         
-        # Determine date range
-        date_range = "Unknown"
-        if start_date and end_date:
-            date_range = f"{start_date} to {end_date}"
-        elif start_date:
-            date_range = f"{start_date} to today"
-        elif portfolio_daily is not None and not portfolio_daily.empty and 'date' in portfolio_daily.columns:
-            dates = portfolio_daily['date'].dropna()
-            if len(dates) > 0:
-                date_range = f"{dates.min()} to {dates.max()}"
+        # Header
+        month_name = datetime.strptime(campaign_start, '%Y-%m-%d').strftime('%B')
+        lines.append(f"📊 {month_name.upper()} PORTFOLIO PACING ANALYSIS")
+        lines.append("═" * 60)
+        lines.append("")
         
-        return json.dumps({
-            "status": "success",
-            "account_id": account_id,
-            "advertiser": advertiser_name,
-            "campaigns_analyzed": campaigns_analyzed,
-            "date_range": date_range,
-            "insights": insights
-        }, indent=2)
+        # Campaign info
+        tz_display = pacing.get('timezone_display', pacing.get('timezone', 'PST'))
+        lines.append(f"Campaign Period: {campaign_start} - {campaign_end} ({tz_display})")
+        lines.append(f"Total Budget: ${pacing['budget']:,.2f}")
+        lines.append("")
         
-    except subprocess.TimeoutExpired:
-        return json.dumps({
-            "status": "error",
-            "error": "Script execution timeout",
-            "message": "Portfolio analysis took too long to complete (exceeded 5 minute timeout)",
-            "user_message": "The portfolio analysis is taking longer than expected. Please try again or contact support."
-        })
+        # Spend Summary
+        lines.append("💰 SPEND SUMMARY")
+        lines.append("─" * 60)
+        lines.append(f"Total Spend to Date:        ${pacing['total_spend']:,.2f}")
+        lines.append(f"Budget Utilization:          {pacing['budget_utilization_pct']:.1f}%")
+        lines.append(f"Remaining Budget:            ${pacing['remaining_budget']:,.2f}")
+        lines.append("")
+        
+        # Timeline Analysis
+        lines.append("📅 TIMELINE ANALYSIS")
+        lines.append("─" * 60)
+        if pacing['is_partial_day']:
+            partial_hours = int(pacing['partial_day_fraction'] * 24)
+            lines.append(f"Days Passed:                 {pacing['days_passed']:.1f} days ({campaign_start} - {pacing['last_data_date']})")
+            lines.append(f"  • Full Days:              {pacing['full_days']} days")
+            lines.append(f"  • Partial Day ({pacing['last_data_date']}): {pacing['partial_day_fraction']:.1%} ({partial_hours} hours elapsed in {tz_display})")
+        else:
+            lines.append(f"Days Passed:                 {pacing['days_passed']:.0f} days ({campaign_start} - {pacing['last_data_date']})")
+        lines.append(f"Days Remaining:              {pacing['days_remaining']:.1f} days")
+        lines.append("")
+        
+        # Pacing Metrics
+        lines.append("📈 PACING METRICS")
+        lines.append("─" * 60)
+        lines.append(f"Expected Spend to Date:      ${pacing['expected_spend']:,.2f}")
+        lines.append(f"  (Target: ${pacing['expected_daily_rate']:,.2f}/day × {pacing['days_passed']:.1f} days)")
+        lines.append(f"Actual Spend to Date:        ${pacing['total_spend']:,.2f}")
+        lines.append(f"Spend Variance:              ${pacing['spend_variance']:,.2f} ({pacing['variance_pct']:+.1f}% {'ahead' if pacing['spend_variance'] > 0 else 'behind'} target)")
+        lines.append("")
+        lines.append(f"Actual Daily Rate:           ${pacing['actual_daily_rate']:,.2f}/day")
+        lines.append(f"Projected Final Spend:       ${pacing['projected_final_spend']:,.2f}")
+        lines.append(f"  (Based on current daily rate × {pacing['total_days']} days)")
+        lines.append("")
+        
+        # Pacing Status
+        lines.append(f"🎯 PACING STATUS: {pacing['pacing_emoji']} {pacing['pacing_status']}")
+        lines.append("─" * 60)
+        
+        # Status explanation
+        if pacing['projected_final_spend'] > pacing['budget']:
+            overage = pacing['projected_final_spend'] - pacing['budget']
+            lines.append(f"Current pace is {abs(pacing['variance_pct']):.1f}% {'ahead' if pacing['variance_pct'] > 0 else 'behind'} target. At current daily rate of")
+            lines.append(f"${pacing['actual_daily_rate']:,.2f}/day, the campaign is projected to spend ${pacing['projected_final_spend']:,.2f}")
+            lines.append(f"by {campaign_end}, which exceeds the ${pacing['budget']:,.2f} budget by ${overage:,.2f}.")
+        else:
+            lines.append(f"Current pace is {abs(pacing['variance_pct']):.1f}% {'ahead' if pacing['variance_pct'] > 0 else 'behind'} target. At current daily rate of")
+            lines.append(f"${pacing['actual_daily_rate']:,.2f}/day, the campaign is projected to spend ${pacing['projected_final_spend']:,.2f}")
+            lines.append(f"by {campaign_end}, which is ${pacing['budget'] - pacing['projected_final_spend']:,.2f} under budget.")
+        
+        lines.append("")
+        lines.append(f"Required Daily Rate (to hit budget): ${pacing['required_daily_rate']:,.2f}/day")
+        lines.append(f"  (Remaining ${pacing['remaining_budget']:,.2f} ÷ {pacing['days_remaining']:.1f} days remaining)")
+        lines.append("")
+        
+        # Recent Daily Spend
+        lines.append("📊 RECENT DAILY SPEND (Last 3 Days)")
+        lines.append("─" * 60)
+        recent_data = portfolio_daily.head(3)
+        for _, row in recent_data.iterrows():
+            date_str = str(row.get('date', ''))
+            spend = float(row.get('spend', 0))
+            if pacing['is_partial_day'] and str(row.get('date', '')) == str(pacing['last_data_date']):
+                lines.append(f"{date_str} ({tz_display}): ${spend:,.2f}  (partial day - {int(pacing['partial_day_fraction'] * 24)} hours)")
+            else:
+                lines.append(f"{date_str} ({tz_display}): ${spend:,.2f}")
+        
+        return "\n".join(lines)
+        
     except Exception as e:
-        import traceback
-        error_msg = str(e)
-        error_traceback = traceback.format_exc()
-        
-        # Check if it's a database connection error
-        if 'NoneType' in error_msg or 'cursor' in error_msg or 'database' in error_msg.lower() or 'connection' in error_msg.lower():
-            return json.dumps({
-                "status": "error",
-                "error": "Database connection required",
-                "message": "I cannot analyze the portfolio at this time because the database connection is not available. The portfolio analysis tool requires a PostgreSQL database connection to retrieve campaign data. Please ensure the database is running and properly configured.",
-                "user_message": "I'm unable to analyze your portfolio right now because the database connection is unavailable. This tool requires access to the campaign database to retrieve portfolio data. Please check your database configuration or contact support.",
-                "technical_details": error_msg
-            })
-        
-        return json.dumps({
-            "status": "error",
-            "error": error_msg,
-            "traceback": error_traceback,
-            "message": "Portfolio analysis failed"
-        })
+        logger.error(f"Error formatting portfolio results: {e}", exc_info=True)
+        return f"❌ Error formatting results: {str(e)}"
 
 
-def _extract_portfolio_insights(
-    portfolio_total: Optional[pd.DataFrame],
-    portfolio_daily: Optional[pd.DataFrame],
-    campaign_start: Optional[str],
-    campaign_end: Optional[str],
-    campaign_budget: Optional[float]
-) -> Dict[str, Any]:
+@tool
+def analyze_portfolio_pacing(
+    account_id: str = "17",
+    advertiser_filter: Optional[str] = None,
+    campaign_start: Optional[str] = "2025-11-01",
+    campaign_end: Optional[str] = "2025-11-30",
+    campaign_budget: Optional[float] = 233000.0,
+    job_name: Optional[str] = None
+) -> str:
     """
-    Extract dashboard-style insights from CSV rollup data.
+    Analyze portfolio pacing and health.
     
-    Returns insights matching the Google Sheets dashboard format.
+    Useful for questions about portfolio health, budget, spend, or status.
+    
+    CRITICAL USAGE RULES:
+    - STRICTLY RESERVED for queries asking for *numbers*, *data*, *status*, or *health* metrics
+    - DO NOT USE if the user is just asking who you are or what you do
+    - DO NOT USE for introductions, greetings, or general conversation
+    - DO NOT USE for role explanations or "who are you?" questions
+    - If the input is ambiguous, err on the side of NOT calling this tool
+    - This tool is computationally expensive - only use when live data is explicitly required
+    
+    Default values:
+    - account_id: "17" (Tricoast Media LLC)
+    - advertiser_filter: None (all advertisers) or "Lilly" if user mentions Eli Lilly
+    - campaign_start: "2025-11-01" (November 1, 2025)
+    - campaign_end: "2025-11-30" (November 30, 2025)
+    - campaign_budget: 233000.0 ($233,000)
+    
+    Always use account_id="17" unless user specifies a different account.
+    If user mentions "Eli Lilly" or "Lilly", use advertiser_filter="Lilly".
+    
+    Parameters:
+    - account_id: Account ID to analyze (default: "17")
+    - advertiser_filter: Filter campaigns by advertiser name (default: None for all)
+    - campaign_start: Campaign start date for pacing (YYYY-MM-DD, default: "2025-11-01")
+    - campaign_end: Campaign end date for pacing (YYYY-MM-DD, default: "2025-11-30")
+    - campaign_budget: Total campaign budget for pacing analysis (default: 233000.0)
+    - job_name: Job identifier for tracking (optional)
+    
+    Returns formatted portfolio analysis with metrics including:
+    - Campaign discovery and counts
+    - Daily spend and impression data
+    - Portfolio rollups (6 views: Line Items Daily/Total, Campaigns Daily/Total, Portfolio Daily/Total)
+    - Recent daily pacing trends
     """
-    insights = {}
-    
-    # Portfolio Total Insights
-    if portfolio_total is not None and not portfolio_total.empty:
-        try:
-            row = portfolio_total.iloc[0]
-            
-            # Extract budget and spend data
-            total_budget_from_data = float(row.get('total_budget', 0) if pd.notna(row.get('total_budget', 0)) else 0)
-            total_spend = float(row.get('total_spend', 0) if pd.notna(row.get('total_spend', 0)) else 0)
-            
-            # Use campaign_budget parameter if provided, otherwise use data budget
-            # This allows overriding the actual portfolio budget for pacing calculations
-            # When campaign_budget is provided, use it as the portfolio_budget for display
-            portfolio_budget = campaign_budget if campaign_budget is not None else total_budget_from_data
-            
-            # Calculate spend percentage based on the budget we're using
-            spend_percentage = (total_spend / portfolio_budget * 100) if portfolio_budget > 0 else 0
-            
-            insights['budget_status'] = {
-                'portfolio_budget': round(portfolio_budget, 2),
-                'spent_budget': round(total_spend, 2),
-                'remaining_budget': round(portfolio_budget - total_spend, 2),
-                'spend_percentage': round(spend_percentage, 2)
-            }
-            
-            # Calculate "should have spent" based on days elapsed
-            if campaign_start and campaign_end and campaign_budget:
-                start_dt = datetime.strptime(campaign_start, '%Y-%m-%d')
-                end_dt = datetime.strptime(campaign_end, '%Y-%m-%d')
-                today = datetime.now().date()
-                
-                total_days = (end_dt.date() - start_dt.date()).days + 1
-                days_passed = max(0, (today - start_dt.date()).days + 1)
-                
-                if days_passed > 0 and total_days > 0:
-                    should_have_spent = (campaign_budget / total_days) * days_passed
-                    insights['budget_status']['should_have_spent'] = round(should_have_spent, 2)
-                    
-                    # Budget projection
-                    if days_passed > 0:
-                        daily_rate = total_spend / days_passed
-                        remaining_days = max(0, (end_dt.date() - today).days + 1)
-                        if remaining_days > 0:
-                            projected_total = total_spend + (daily_rate * remaining_days)
-                            budget_projection = (projected_total / campaign_budget) * 100 if campaign_budget > 0 else 0
-                            insights['budget_status']['budget_projection'] = round(budget_projection, 2)
-        except Exception as e:
-            # Fallback if DataFrame access fails
-            pass
-    
-    # Timeline Insights
-    if campaign_start and campaign_end:
-        start_dt = datetime.strptime(campaign_start, '%Y-%m-%d')
-        end_dt = datetime.strptime(campaign_end, '%Y-%m-%d')
-        today = datetime.now().date()
+    try:
+        # Clean inputs (handle simple lists from LLM)
+        clean_account = _safe_str(account_id) or "17"
+        clean_filter = _safe_str(advertiser_filter) if advertiser_filter else None
+        clean_start = _safe_str(campaign_start) if campaign_start else "2025-11-01"
+        clean_end = _safe_str(campaign_end) if campaign_end else "2025-11-30"
         
-        total_days = (end_dt.date() - start_dt.date()).days + 1
-        days_passed = max(0, (today - start_dt.date()).days + 1)
-        days_left = max(0, (end_dt.date() - today).days + 1)
+        logger.info(f"Portfolio Pacing Tool executing: Account={clean_account}, Filter={clean_filter}, Date Range={clean_start} to {clean_end}, Budget=$233,000")
         
-        insights['timeline'] = {
-            'start_date': campaign_start,
-            'end_date': campaign_end,
-            'today': today.strftime('%Y-%m-%d'),
-            'total_days': total_days,
-            'days_passed': days_passed,
-            'days_left': days_left
-        }
-    
-    # Daily Pacing Insights
-    if campaign_start and campaign_end and campaign_budget:
-        start_dt = datetime.strptime(campaign_start, '%Y-%m-%d')
-        end_dt = datetime.strptime(campaign_end, '%Y-%m-%d')
-        today = datetime.now().date()
+        # Lazy load CampaignSpendAnalyzer if not already loaded
+        # This ensures path setup happens at call time, not module import time
+        global CampaignSpendAnalyzer, REAL_DATA_AVAILABLE
         
-        total_days = (end_dt.date() - start_dt.date()).days + 1
-        days_passed = max(0, (today - start_dt.date()).days + 1)
-        days_left = max(0, (end_dt.date() - today).days + 1)
-        
-        # Target daily rate (constant)
-        target_daily_rate = campaign_budget / total_days if total_days > 0 else 0
-        
-        # Actual daily rate (from portfolio_total)
-        if portfolio_total is not None and not portfolio_total.empty:
+        if not REAL_DATA_AVAILABLE or not CampaignSpendAnalyzer:
+            # Try to load it now (might have failed at import time due to path issues)
             try:
-                row = portfolio_total.iloc[0]
-                total_spend = float(row.get('total_spend', 0) if pd.notna(row.get('total_spend', 0)) else 0)
-                actual_daily_rate = total_spend / days_passed if days_passed > 0 else 0
+                # Set up paths to tools/campaign-portfolio-pacing
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                tool_dir = os.path.join(project_root, "tools", "campaign-portfolio-pacing")
+                tool_src = os.path.join(tool_dir, "src")
                 
-                # Required daily rate (catch-up rate)
-                # Use portfolio_budget from insights (which uses campaign_budget if provided)
-                effective_budget = insights.get('budget_status', {}).get('portfolio_budget', campaign_budget)
-                remaining_budget = effective_budget - total_spend
-                required_daily_rate = remaining_budget / days_left if days_left > 0 else 0
+                if not os.path.exists(tool_src) or not os.path.exists(os.path.join(tool_src, "campaign_analyzer.py")):
+                    raise ImportError(f"tools/campaign-portfolio-pacing not found at {tool_src}")
                 
-                # Pacing status
-                if actual_daily_rate >= target_daily_rate * 0.95:  # Within 5% of target
-                    pacing_status = "ON_TRACK"
-                elif actual_daily_rate >= target_daily_rate * 0.80:  # Within 20% of target
-                    pacing_status = "SLIGHTLY_BEHIND"
-                else:
-                    pacing_status = "BEHIND"
+                # Set up paths for dependencies
+                shared_path = os.path.join(project_root, "tools", "shared")
+                campaign_analysis_src = os.path.join(project_root, "tools", "staging", "campaign-analysis", "src")
                 
-                insights['daily_pacing'] = {
-                    'target_daily_rate': round(target_daily_rate, 2),
-                    'actual_daily_rate': round(actual_daily_rate, 2),
-                    'required_daily_rate': round(required_daily_rate, 2),
-                    'pacing_status': pacing_status,
-                    'budget_projection': insights.get('budget_status', {}).get('budget_projection', 0)
-                }
-            except Exception:
-                pass
-    
-    # Portfolio Daily Trend (for chart visualization)
-    if portfolio_daily is not None and not portfolio_daily.empty:
+                # Add paths for dependencies first
+                if os.path.exists(shared_path) and shared_path not in sys.path:
+                    sys.path.insert(0, shared_path)
+                if os.path.exists(campaign_analysis_src) and campaign_analysis_src not in sys.path:
+                    sys.path.insert(0, campaign_analysis_src)
+                
+                # Add tool_dir to path FIRST so src package can be found
+                if os.path.exists(tool_dir) and tool_dir not in sys.path:
+                    sys.path.insert(0, tool_dir)
+                
+                # Change to tool directory so relative imports work properly
+                original_cwd = os.getcwd()
+                original_path = list(sys.path)  # Copy, don't reference
+                try:
+                    # CRITICAL: Add tool_dir to sys.path BEFORE changing directory
+                    # This ensures Python can find the 'src' package
+                    if tool_dir not in sys.path:
+                        sys.path.insert(0, tool_dir)
+                    
+                    os.chdir(tool_dir)
+                    
+                    # Clear ALL cached src.* modules to force fresh import
+                    import importlib
+                    import importlib.util
+                    
+                    # Clear all src.* modules
+                    modules_to_clear = [k for k in list(sys.modules.keys()) if k.startswith('src.')]
+                    for mod_name in modules_to_clear:
+                        del sys.modules[mod_name]
+                    
+                    # Also clear 'src' itself if cached
+                    if 'src' in sys.modules:
+                        del sys.modules['src']
+                    
+                    # CRITICAL: Initialize the src package structure BEFORE importing CampaignSpendAnalyzer
+                    # This ensures relative imports (like .utils.logging) resolve correctly
+                    # We must import in order: src -> src.utils -> src.utils.logging
+                    # This initializes the package namespace properly
+                    try:
+                        # Step 1: Import src package (creates src namespace)
+                        import src
+                        if not hasattr(src, '__path__'):
+                            raise ImportError("src is not a package")
+                        
+                        # Step 2: Import src.utils (creates src.utils namespace)
+                        import src.utils
+                        if not hasattr(src.utils, '__path__'):
+                            raise ImportError("src.utils is not a package")
+                        
+                        # Step 3: Import src.utils.logging (ensures it's accessible)
+                        import src.utils.logging
+                        
+                        # Step 4: Import src.utils.config (might be needed)
+                        try:
+                            import src.utils.config
+                        except ImportError:
+                            pass  # Optional
+                        
+                        logger.debug("✅ Verified src package structure is importable")
+                    except ImportError as e:
+                        error_msg = f"Failed to initialize src package structure: {e}"
+                        logger.error(error_msg)
+                        raise ImportError(error_msg)
+                    
+                    # Now import CampaignSpendAnalyzer - package structure is initialized
+                    # This will trigger imports of dependencies, which should now resolve correctly
+                    from src.campaign_analyzer import CampaignSpendAnalyzer
+                    REAL_DATA_AVAILABLE = True
+                    logger.info("✅ CampaignSpendAnalyzer loaded successfully (lazy load)")
+                finally:
+                    os.chdir(original_cwd)
+                    # Don't restore sys.path completely - keep tool_dir for module resolution
+                    # The imported modules might still need it
+                    if tool_dir not in sys.path:
+                        sys.path.insert(0, tool_dir)
+            except Exception as e:
+                error_msg = f"CampaignSpendAnalyzer not available: {e}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+        
+        # Final check
+        if not REAL_DATA_AVAILABLE or not CampaignSpendAnalyzer:
+            error_msg = "CampaignSpendAnalyzer not available. Database connection required."
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        
         try:
-            daily_trend = []
-            for _, row in portfolio_daily.iterrows():
-                date_val = row.get('date', '')
-                spend_val = row.get('spend', 0)
-                impressions_val = row.get('impressions', 0)
-                
-                daily_trend.append({
-                    'date': str(date_val) if pd.notna(date_val) else '',
-                    'spend': float(spend_val) if pd.notna(spend_val) else 0.0,
-                    'impressions': int(impressions_val) if pd.notna(impressions_val) else 0
-                })
-            insights['daily_trend'] = daily_trend
-        except Exception:
-            pass
-    
-    return insights
+            logger.info("Running full portfolio analysis using CampaignSpendAnalyzer")
+            
+            # Load client config for PST timezone handling (for account_id=17: Tricoast Media LLC)
+            client_config = None
+            try:
+                # Import load_client_config from the tool's utils
+                # We need to be in the tool directory context for imports
+                original_cwd = os.getcwd()
+                original_path = sys.path[:]
+                try:
+                    # Get tool_dir again (already set up earlier)
+                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    tool_dir = os.path.join(project_root, "tools", "campaign-portfolio-pacing")
+                    
+                    os.chdir(tool_dir)
+                    if tool_dir not in sys.path:
+                        sys.path.insert(0, tool_dir)
+                    
+                    from src.utils.config import load_client_config
+                    
+                    # For account_id=17, load Tricoast Media LLC config
+                    if clean_account == "17":
+                        client_name = "Tricoast Media LLC"
+                        try:
+                            client_config = load_client_config(client_name)
+                            logger.info(f"✅ Loaded client config for {client_name}: timezone={client_config.get('timezone')} ({client_config.get('timezone_full', '')})")
+                        except FileNotFoundError:
+                            logger.warning(f"Client config not found for {client_name}, using UTC timezone")
+                        except Exception as e:
+                            logger.warning(f"Could not load client config: {e}, using UTC timezone")
+                finally:
+                    os.chdir(original_cwd)
+                    sys.path[:] = original_path
+            except Exception as e:
+                logger.warning(f"Could not import load_client_config: {e}, using UTC timezone")
+            
+            # Initialize analyzer with account, advertiser filter, and client config (for PST timezone)
+            analyzer = CampaignSpendAnalyzer(
+                account_id=clean_account,
+                advertiser_filter=clean_filter,
+                client_config=client_config  # Pass client config for PST timezone handling
+            )
+            
+            # Run full analysis (discovers campaigns, collects spend data, generates rollups)
+            result = analyzer.run_analysis(
+                start_date=clean_start,
+                end_date=clean_end
+            )
+            
+            # Check for errors
+            if result.get('error'):
+                error_msg = result.get('error')
+                logger.error(f"Analysis returned error: {error_msg}")
+                raise Exception(f"Portfolio analysis failed: {error_msg}")
+            
+            # Add account_id to result for formatting
+            result['account_id'] = clean_account
+            
+            # Format results with pacing analysis
+            formatted_output = _format_portfolio_results(
+                result_data=result,
+                campaign_start=clean_start,
+                campaign_end=clean_end,
+                campaign_budget=float(campaign_budget) if campaign_budget else 233000.0,
+                client_config=client_config
+            )
+            logger.info("✅ Portfolio analysis completed successfully")
+            return formatted_output
+            
+        except Exception as e:
+            logger.error(f"Error running portfolio analysis: {e}", exc_info=True)
+            raise Exception(f"Portfolio analysis failed: {str(e)}")
+        
+    except Exception as e:
+        logger.error(f"Portfolio pacing tool error: {e}", exc_info=True)
+        raise

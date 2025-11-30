@@ -38,6 +38,28 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
             # The translated instruction may not contain these keywords
             question_for_guardian = user_question if user_question else instruction
             
+            # --- DYNAMIC TOOL BINDING (Tool Holster Pattern) ---
+            # Trust the supervisor's explicit instruction - if it explicitly forbids tools,
+            # holster them. Otherwise, let the agent decide (with tools available).
+            # The supervisor will include directives like "STRICTLY FORBIDDEN from using tools"
+            # or "text only" when tools should not be used.
+            instruction_lower = instruction.lower()
+            explicit_no_tools_directives = [
+                "strictly forbidden from using tools",
+                "do not use tools",
+                "text only",
+                "speak text only",
+                "forbidden from using",
+                "must not use tools"
+            ]
+            should_holster_tools = any(directive in instruction_lower for directive in explicit_no_tools_directives)
+            
+            logger.info(f"Guardian node - Instruction: '{instruction}' | Holster tools: {should_holster_tools}")
+            if should_holster_tools:
+                logger.info(f"✅ Tool Holster ACTIVE - tools will be disabled")
+            else:
+                logger.info(f"⚠️  Tool Holster INACTIVE - tools will be available")
+            
             # Convert state messages to conversation history format
             conversation_history = []
             for msg in state.get("messages", []):
@@ -70,9 +92,34 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
             if agent and hasattr(agent, 'set_streaming_callback'):
                 agent.set_streaming_callback(guardian_streaming_wrapper)
             
-            # Call existing agent logic
-            # Read supervisor instruction from state and pass it to the agent
-            # This allows the Guardian to follow supervisor guidance and avoid unnecessary tool calls
+            # --- TOOL HOLSTER LOGIC ---
+            # If supervisor explicitly forbade tools, run WITHOUT tools
+            # Otherwise, run WITH tools (normal path - agent decides)
+            if should_holster_tools:
+                logger.info("Guardian: Running WITHOUT tools (Tool Holster - supervisor explicitly forbade tools)")
+                # Run without tools using direct agent method
+                if agent and hasattr(agent, 'analyze_without_tools'):
+                    # For introductions, we don't need knowledge base context
+                    result = agent.analyze_without_tools(
+                        question=question_for_guardian,
+                        context="No specific context needed for introduction.",
+                        supervisor_instruction=instruction
+                    )
+                    response = result.get('answer', '') if isinstance(result, dict) else str(result)
+                else:
+                    # Fallback: call via standard path but force use_tools=False
+                    response = call_specialist_agent_func(
+                        agent_name="guardian",
+                        question=question_for_guardian,
+                        context_id=context_id,
+                        embedding_model=embedding_model,
+                        agent_registry_get_agent=get_agent_func,
+                        conversation_history=conversation_history if conversation_history else None,
+                        supervisor_instruction=instruction
+                    )
+            else:
+                logger.info("Guardian: Running WITH tools (data request detected)")
+                # Normal path: run WITH tools
             response = call_specialist_agent_func(
                 agent_name="guardian",
                 question=question_for_guardian,  # Pass original question for context
@@ -90,17 +137,23 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
             # via its own streaming_callback in guardian_agent.py. Emitting here causes duplicates.
             
             # Update state
+            # CRITICAL: Set next="" to return to supervisor so it can route to FINISH
+            # CRITICAL: Do NOT add to messages - agent already streamed via callback
+            # Supervisor can see response via agent_responses, no need to add to messages
+            # Adding to messages causes duplicate display (Guardian response + Orchestrator echo)
             return {
-                "messages": [AIMessage(content=response)],
+                # DO NOT add to messages - only add to agent_responses
+                # The Canary node follows this pattern correctly - Guardian should match it
                 "agent_responses": state.get("agent_responses", []) + [{"agent": "guardian", "response": response}],
-                "current_task_instruction": ""  # Clear after processing
+                "current_task_instruction": "",  # Clear after processing
+                "next": ""  # Return to supervisor for FINISH routing
             }
             
         except Exception as e:
             logger.error(f"Guardian node error: {e}", exc_info=True)
             error_response = f"Error in Guardian agent: {str(e)}"
             return {
-                "messages": [AIMessage(content=error_response)],
+                # DO NOT add to messages - only add to agent_responses (prevents duplicates)
                 "agent_responses": state.get("agent_responses", []) + [{"agent": "guardian", "response": error_response}],
                 "current_task_instruction": ""
             }
