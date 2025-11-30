@@ -80,18 +80,19 @@ def create_semantic_search_node(semantic_search_func, streaming_callback=None):
                     logger.debug(f"Streaming callback error: {e}")
             
             # Update state (semantic_search is a search service, not an agent)
+            # DO NOT add to agent_responses - semantic_search is a tool, not an agent
+            # Results are already in messages, supervisor can see them there
             return {
                 "messages": [AIMessage(content=response)],
-                "agent_responses": state.get("agent_responses", []) + [{"service": "semantic_search", "response": response}],
                 "current_task_instruction": ""  # Clear after processing
             }
             
         except Exception as e:
             logger.error(f"Semantic search node error: {e}", exc_info=True)
             error_response = f"Error in semantic search: {str(e)}"
+            # DO NOT add to agent_responses - semantic_search is a tool, not an agent
             return {
                 "messages": [AIMessage(content=error_response)],
-                "agent_responses": state.get("agent_responses", []) + [{"service": "semantic_search", "response": error_response}],
                 "current_task_instruction": ""
             }
     

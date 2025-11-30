@@ -353,11 +353,8 @@ Route to appropriate agent or use FINISH if no agents needed."""
                     logger.debug("🔍 Orchestrator: Returning supervisor response")
                     return actual_agent_responses[0].get("response", "No response from supervisor.")
                 
-                # Check if we have semantic_search response only (semantic_search is a service, not an agent)
-                if len(actual_agent_responses) == 1 and (actual_agent_responses[0].get("agent") == "semantic_search" or actual_agent_responses[0].get("service") == "semantic_search"):
-                    # For semantic_search, return the response directly (it's already formatted)
-                    logger.debug("🔍 Orchestrator: Returning semantic_search response")
-                    return actual_agent_responses[0].get("response", "No response from semantic search.")
+                # Note: semantic_search is a tool and doesn't belong in agent_responses
+                # Its results are in messages and will be synthesized by the orchestrator below
                 
                 # For ALL single agent responses, return empty string
                 # Agent response was already displayed via streaming callback

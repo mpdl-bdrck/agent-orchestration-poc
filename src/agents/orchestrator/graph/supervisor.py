@@ -69,33 +69,42 @@ def create_supervisor_node(llm, system_prompt: str, orchestrator_prompt: str = N
             
             # Check if we've already routed to agents
             agent_responses = state.get("agent_responses", [])
-            # Extract agent/service names (semantic_search uses "service" key, others use "agent" key)
+            # Extract agent names (only actual agents, not tools/services)
             agents_called = []
             for r in agent_responses:
-                agent_name = r.get("agent") or r.get("service")  # Support both "agent" and "service" keys
+                agent_name = r.get("agent")  # Only look for "agent" key (tools don't belong in agent_responses)
                 if agent_name:  # Only add non-None values
                     agents_called.append(agent_name)
             
             # Build context for routing decision
             context_parts = [f"User question: {user_message}"]
             
+            # Check messages for semantic_search results (tools add to messages, not agent_responses)
+            # semantic_search adds AIMessage to messages, so check for AIMessages that indicate semantic_search has been called
+            messages = state.get("messages", [])
+            # Since agents don't add to messages anymore (they use agent_responses),
+            # any AIMessage in messages is from semantic_search tool
+            from langchain_core.messages import AIMessage
+            semantic_search_called = any(
+                isinstance(msg, AIMessage) and msg.content 
+                for msg in messages
+            )
+            
             if agent_responses:
-                context_parts.append(f"\nPrevious responses ({len(agent_responses)} total):")
+                context_parts.append(f"\nPrevious agent responses ({len(agent_responses)} total):")
                 for resp in agent_responses:
-                    # Support both "agent" and "service" keys (semantic_search uses "service")
-                    agent_name = resp.get("agent") or resp.get("service") or "unknown"
+                    agent_name = resp.get("agent", "unknown")
                     response_preview = resp.get("response", "")[:200]  # Truncate for context
-                    # Distinguish between agents and tools/services
-                    if resp.get("service") == "semantic_search":
-                        context_parts.append(f"- semantic_search (tool): {response_preview}...")
-                    else:
-                        context_parts.append(f"- {agent_name} (agent): {response_preview}...")
+                    context_parts.append(f"- {agent_name} (agent): {response_preview}...")
+            
+            if semantic_search_called:
+                context_parts.append(f"\nNote: semantic_search tool has been called (results in conversation history).")
             
             # Build messages for LLM routing decision
             # Add explicit warning if agents have already responded
             routing_guidance = ""
             if agents_called:
-                routing_guidance = f"\n\n⚠️ CRITICAL: The following agents/services have already responded: {', '.join(agents_called)}\n"
+                routing_guidance = f"\n\n⚠️ CRITICAL: The following agents have already responded: {', '.join(agents_called)}\n"
                 routing_guidance += "If the question is FULLY ANSWERED by these responses, you MUST route to FINISH.\n"
                 routing_guidance += "Do NOT route back to the same agent unless the user is asking a NEW follow-up question.\n"
             
@@ -115,8 +124,7 @@ Make a routing decision:
 
 IMPORTANT: semantic_search is a TOOL/SERVICE, not an agent. Refer to it as "semantic_search tool" or "semantic_search service" in your reasoning, never as "semantic_search agent".
 
-Services/Tools called: {', '.join([s for s in agents_called if s == 'semantic_search']) if 'semantic_search' in agents_called else 'none'}
-Agents called: {', '.join([a for a in agents_called if a != 'semantic_search']) if any(a != 'semantic_search' for a in agents_called) else 'none'}""")
+Agents called: {', '.join(agents_called) if agents_called else 'none'}""")
             ]
             
             # Use structured output for routing decision
@@ -132,6 +140,14 @@ Agents called: {', '.join([a for a in agents_called if a != 'semantic_search']) 
                 decision.reasoning = f"The {decision.next} agent has already responded to this question. The question is fully answered."
                 decision.instructions = ""
             
+            # CRITICAL FIX: Prevent routing back to semantic_search if it's already been called
+            # Check if semantic_search results are in messages (semantic_search adds AIMessage to messages)
+            if decision.next == "semantic_search" and semantic_search_called:
+                logger.warning("Supervisor tried to route back to semantic_search which already responded. Forcing FINISH to prevent duplicate tool calls.")
+                decision.next = "FINISH"
+                decision.reasoning = "The semantic_search tool has already provided results. The question is fully answered."
+                decision.instructions = ""
+            
             # Emit streaming event if callback available
             if streaming_callback:
                 try:
@@ -139,11 +155,15 @@ Agents called: {', '.join([a for a in agents_called if a != 'semantic_search']) 
                 except Exception as e:
                     logger.debug(f"Streaming callback error: {e}")
             
-            # If routing to FINISH, check if any agent/service has already responded
+            # If routing to FINISH, check if any agent has already responded
             if decision.next == "FINISH":
-                # Check if any agent/service has already responded - if so, don't generate new response
+                # Check if any agent has already responded - if so, don't generate new response
                 # Filter out orchestrator responses to check for actual agent responses
-                actual_agent_responses = [r for r in agent_responses if r.get("agent") != "orchestrator"]
+                # Note: semantic_search is a tool and doesn't belong in agent_responses (results are in messages)
+                actual_agent_responses = [
+                    r for r in agent_responses 
+                    if r.get("agent") != "orchestrator"
+                ]
                 has_agent_response = len(actual_agent_responses) > 0
                 
                 # CRITICAL: If any agent has responded, NEVER generate orchestrator response

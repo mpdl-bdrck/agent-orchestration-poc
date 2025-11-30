@@ -444,6 +444,52 @@ def analyze(self, question):
 
 **Verification**: Check all prompt files and agent references for consistency.
 
+### Mistake 9: Adding Tool Results to agent_responses
+
+**Symptom**: Tools (like `semantic_search`) adding results to `agent_responses`, causing design confusion and requiring filtering workarounds.
+
+**Fix**: Tools should only add to `messages`, not `agent_responses`. `agent_responses` is semantically for agents only.
+
+**Example**:
+```python
+# ❌ WRONG (semantic_search in agent_responses)
+return {
+    "messages": [AIMessage(content=response)],
+    "agent_responses": state.get("agent_responses", []) + [{"service": "semantic_search", "response": response}],
+}
+
+# ✅ CORRECT (semantic_search only in messages)
+return {
+    "messages": [AIMessage(content=response)],
+    # DO NOT add to agent_responses - tools don't belong there
+}
+```
+
+**Key Principle**: `agent_responses` is for agents only. Tools add to `messages`. This separation ensures clean design.
+
+### Mistake 10: Not Preventing Tool Infinite Loops
+
+**Symptom**: Tools (like `semantic_search`) being called repeatedly in infinite loops because supervisor can't detect they've already been called.
+
+**Fix**: When tools don't add to `agent_responses`, detection must rely on `messages`. Always add hardcoded prevention checks for tools to prevent infinite loops.
+
+**Example**:
+```python
+# Detection: Check for AIMessage in messages (tools add AIMessage, agents don't)
+from langchain_core.messages import AIMessage
+semantic_search_called = any(
+    isinstance(msg, AIMessage) and msg.content 
+    for msg in messages
+)
+
+# Prevention: Hardcoded check after LLM routing decision
+if decision.next == "semantic_search" and semantic_search_called:
+    logger.warning("Preventing duplicate semantic_search call")
+    decision.next = "FINISH"
+```
+
+**Key Principle**: Don't rely solely on LLM to prevent loops. Add hardcoded prevention checks for tools.
+
 ---
 
 ## Testing & Validation
@@ -502,6 +548,9 @@ def analyze(self, question):
 5. **Fixed duplicate agent responses** - Removed messages from agent nodes, only use agent_responses (December 2025)
 6. **Fixed Guardian import error** - Moved execute_agent_loop import to module level (December 2025)
 7. **Fixed Optimizer emoji consistency** - Updated Guardian prompt to use 🎯 instead of ⚡ (December 2025)
+8. **Fixed semantic_search design** - Removed from agent_responses (tools don't belong there) (December 2025)
+9. **Fixed semantic_search infinite loop** - Added hardcoded prevention check (December 2025)
+10. **Removed hardcoded introduction logic** - Removed "STRICTLY FORBIDDEN" rules from supervisor prompt (December 2025)
 
 ### Latest Learnings (Cost Framing & CoT Inhibition)
 

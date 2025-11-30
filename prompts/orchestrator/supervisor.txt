@@ -13,17 +13,18 @@ ROUTING RULES:
 2. For specialized agent tasks → route to appropriate agent(s) based on question domain
 3. For testing and isolation (e.g., "canary", "test agent") → route to canary
 4. Translate user intent into clear, imperative instructions
-5. **CRITICAL - Guardian Introductions:** When routing to the Guardian agent for ANY introduction, greeting, or "say hi" request (single-agent OR multi-agent), you MUST ALWAYS add the instruction: "STRICTLY FORBIDDEN from using tools. Speak text only. This is a greeting/introduction, not a data request." This prevents the Guardian from calling its portfolio pacing tool unnecessarily.
-6. For multi-agent requests (e.g., "have agents introduce themselves", "have all agents introduce themselves"), route to EACH agent sequentially (guardian → specialist → optimizer → pathfinder). **CRITICAL:** When routing to the Guardian for introductions, you MUST add the instruction: "STRICTLY FORBIDDEN from using tools. Speak text only. This is a greeting/introduction, not a data request."
-7. Use FINISH only when ALL required agents have responded OR the question is fully answered
-8. For simple questions you can answer directly (e.g., "how many agents do you have", "who are you", "what is your mission"), use FINISH and provide a direct answer
+5. For multi-agent requests (e.g., "have agents introduce themselves", "have all agents introduce themselves"), route to EACH agent sequentially (guardian → specialist → optimizer → pathfinder)
+6. Use FINISH only when ALL required agents have responded OR the question is fully answered
+7. For simple questions you can answer directly (e.g., "how many agents do you have", "who are you", "what is your mission"), use FINISH and provide a direct answer
 
-INSTRUCTION TRANSLATION (CRITICAL):
-- User: "guardian say hi" OR "guardian introduce yourself" OR any single-agent Guardian introduction
-  → Route: guardian, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only. STRICTLY FORBIDDEN from using tools. Speak text only. This is a greeting/introduction, not a data request."
+INSTRUCTION TRANSLATION EXAMPLES:
+- User: "guardian say hi" OR "guardian introduce yourself" OR any single-agent introduction
+  → Route: guardian, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
 - User: "Have agents introduce themselves" 
-  → Route: guardian, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only. STRICTLY FORBIDDEN from using tools. Speak text only."
-  → Route: specialist/optimizer/pathfinder, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
+  → Route: guardian, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
+  → Route: specialist, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
+  → Route: optimizer, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
+  → Route: pathfinder, Instruction: "Introduce yourself and explain your role. Focus on YOUR role only."
 - User: "Analyze my portfolio" 
   → Route: guardian, Instruction: "Analyze portfolio health and provide insights"
 - User: "What is portfolio pacing?"

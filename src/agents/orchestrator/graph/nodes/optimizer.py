@@ -47,14 +47,14 @@ def create_optimizer_node(call_specialist_agent_func, embedding_model, get_agent
             if not response:
                 response = "No response from Optimizer agent."
             
+            # NOTE: OptimizerAgent doesn't have streaming callback setup (unlike GuardianAgent)
+            # Since OptimizerAgent doesn't emit its own response, the node must emit it here
+            # This matches the pattern used by Specialist and Pathfinder nodes
             if streaming_callback:
                 try:
                     streaming_callback("agent_response", response, {"agent": "optimizer"})
                 except Exception:
                     pass
-            
-            # NOTE: Do NOT emit agent_response here - the Optimizer agent already emits
-            # via its own streaming_callback. Emitting here causes duplicates.
             
             # Update state
             # CRITICAL: Set next="" to return to supervisor so it can route to FINISH
