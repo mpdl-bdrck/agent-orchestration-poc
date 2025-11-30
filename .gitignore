@@ -52,6 +52,12 @@ logs/
 .aws/
 *.pem
 
+# Google Cloud credentials
+**/credentials/
+*credentials*.json
+*bdrck-gsheets-key.json
+credentials.py
+
 # Reports and generated files
 tools/reports/
 *.csv
