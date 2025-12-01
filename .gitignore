@@ -47,6 +47,8 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+# Chainlit SQLite database (if persistence is enabled in future)
+chainlit.db
 
 # AWS credentials
 .aws/

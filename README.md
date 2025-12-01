@@ -80,12 +80,42 @@ pip install -r requirements.txt
 
 ### 3. Configuration
 
-Copy `.env.example` to `.env` and configure:
+Create `.env` file and configure:
 
 ```env
 GEMINI_API_KEY=your_key_here
-DATABASE_URL=postgresql://user:pass@localhost:5432/knowledge_base
-LOG_LEVEL=INFO
+
+# Knowledge Base (Vector Storage) - LOCAL PostgreSQL
+DATABASE_URL=postgresql://postgres:password@localhost:5432/knowledge_base
+
+# Chainlit UI Persistence (Conversation History) - LOCAL PostgreSQL
+# Use dedicated database to prevent schema conflicts
+CHAINLIT_DATABASE_URL=postgresql://postgres:password@localhost:5432/chainlit_db
+
+# PostgreSQL Connection (for scripts) - LOCAL only
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password_here
+
+# Optional: Override default chainlit database name
+# CHAINLIT_DB_NAME=chainlit_db
+```
+
+**Important**: 
+- This setup uses **LOCAL PostgreSQL** only (localhost)
+- Chainlit uses a **dedicated database** (`chainlit_db`) separate from the knowledge base
+- This prevents schema conflicts and datetime casting errors
+
+**Quick Setup**:
+```bash
+# 1. Ensure PostgreSQL is running locally
+pg_isready
+
+# 2. Initialize Chainlit database (creates chainlit_db and schema)
+./scripts/init_chainlit_db.sh
+
+# 3. The script will show you the exact CHAINLIT_DATABASE_URL to add to .env
 ```
 
 ### 4. Knowledge Base Ingestion
@@ -188,6 +218,20 @@ src/
 **Cause:** Python 3.14 has compatibility issues with Chainlit's async dependencies (`anyio`, `sniffio`).
 
 **Fix:** Use Python 3.13 instead. Run `./setup_python313.sh` to set up a compatible environment.
+
+**Issue:** `asyncpg.exceptions.DataError: invalid input for query argument` or `relation "Thread" does not exist`
+
+**Cause:** Chainlit database schema is missing or incorrect. This happens when:
+- Database doesn't exist
+- Schema has TEXT columns instead of TIMESTAMPTZ (causes datetime casting errors)
+- Chainlit is sharing the same database as knowledge_base (schema conflicts)
+
+**Fix:** 
+1. Run `./scripts/init_chainlit_db.sh` to create dedicated `chainlit_db` database with correct schema
+2. Add `CHAINLIT_DATABASE_URL` to `.env` (the script shows you the exact value)
+3. Restart Chainlit - errors should disappear
+
+**Note:** Chainlit uses a dedicated database (`chainlit_db`) separate from the knowledge base (`knowledge_base`) to prevent schema conflicts.
 
 ## 📚 Documentation
 

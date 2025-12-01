@@ -255,12 +255,13 @@ def _format_portfolio_results(
         days_in_range = (end_date_obj - start_date_obj).days + 1
         
         if days_in_range == 30:
-            lines.append(f"📊 30-DAY ROLLING WINDOW PORTFOLIO PACING ANALYSIS")
+            header_text = "📊 30-DAY ROLLING WINDOW PORTFOLIO PACING ANALYSIS"
         else:
             # Fallback for custom date ranges
             month_name = datetime.strptime(campaign_start, '%Y-%m-%d').strftime('%B')
-            lines.append(f"📊 {month_name.upper()} PORTFOLIO PACING ANALYSIS")
-        lines.append("═" * 60)
+            header_text = f"📊 {month_name.upper()} PORTFOLIO PACING ANALYSIS"
+        lines.append(header_text)
+        lines.append("═" * 10)
         lines.append("")
         
         # Campaign info
@@ -270,16 +271,18 @@ def _format_portfolio_results(
         lines.append("")
         
         # Spend Summary
-        lines.append("💰 SPEND SUMMARY")
-        lines.append("─" * 60)
+        spend_header = "💰 SPEND SUMMARY"
+        lines.append(spend_header)
+        lines.append("─" * 10)
         lines.append(f"Total Spend to Date:        ${pacing['total_spend']:,.2f}")
         lines.append(f"Budget Utilization:          {pacing['budget_utilization_pct']:.1f}%")
         lines.append(f"Remaining Budget:            ${pacing['remaining_budget']:,.2f}")
         lines.append("")
         
         # Timeline Analysis
-        lines.append("📅 TIMELINE ANALYSIS")
-        lines.append("─" * 60)
+        timeline_header = "📅 TIMELINE ANALYSIS"
+        lines.append(timeline_header)
+        lines.append("─" * 10)
         if pacing['is_partial_day']:
             partial_hours = int(pacing['partial_day_fraction'] * 24)
             lines.append(f"Days Passed:                 {pacing['days_passed']:.1f} days ({campaign_start} - {pacing['last_data_date']})")
@@ -287,12 +290,13 @@ def _format_portfolio_results(
             lines.append(f"  • Partial Day ({pacing['last_data_date']}): {pacing['partial_day_fraction']:.1%} ({partial_hours} hours elapsed in {tz_display})")
         else:
             lines.append(f"Days Passed:                 {pacing['days_passed']:.0f} days ({campaign_start} - {pacing['last_data_date']})")
-        lines.append(f"Days Remaining:              {pacing['days_remaining']:.1f} days")
+        # Removed "Days Remaining" - not relevant for rolling 30-day window (always 0)
         lines.append("")
         
         # Pacing Metrics
-        lines.append("📈 PACING METRICS")
-        lines.append("─" * 60)
+        pacing_metrics_header = "📈 PACING METRICS"
+        lines.append(pacing_metrics_header)
+        lines.append("─" * 10)
         lines.append(f"Expected Spend to Date:      ${pacing['expected_spend']:,.2f}")
         lines.append(f"  (Target: ${pacing['expected_daily_rate']:,.2f}/day × {pacing['days_passed']:.1f} days)")
         lines.append(f"Actual Spend to Date:        ${pacing['total_spend']:,.2f}")
@@ -304,8 +308,9 @@ def _format_portfolio_results(
         lines.append("")
         
         # Pacing Status
-        lines.append(f"🎯 PACING STATUS: {pacing['pacing_emoji']} {pacing['pacing_status']}")
-        lines.append("─" * 60)
+        pacing_status_header = f"🎯 PACING STATUS: {pacing['pacing_emoji']} {pacing['pacing_status']}"
+        lines.append(pacing_status_header)
+        lines.append("─" * 10)
         
         # Status explanation
         if pacing['projected_final_spend'] > pacing['budget']:
@@ -318,14 +323,13 @@ def _format_portfolio_results(
             lines.append(f"${pacing['actual_daily_rate']:,.2f}/day, the campaign is projected to spend ${pacing['projected_final_spend']:,.2f}")
             lines.append(f"by {campaign_end}, which is ${pacing['budget'] - pacing['projected_final_spend']:,.2f} under budget.")
         
-        lines.append("")
-        lines.append(f"Required Daily Rate (to hit budget): ${pacing['required_daily_rate']:,.2f}/day")
-        lines.append(f"  (Remaining ${pacing['remaining_budget']:,.2f} ÷ {pacing['days_remaining']:.1f} days remaining)")
+        # Removed "Required Daily Rate" - not meaningful for rolling 30-day window (always 0 days remaining)
         lines.append("")
         
         # Recent Daily Spend
-        lines.append("📊 RECENT DAILY SPEND (Last 3 Days)")
-        lines.append("─" * 60)
+        recent_spend_header = "📊 RECENT DAILY SPEND (Last 3 Days)"
+        lines.append(recent_spend_header)
+        lines.append("─" * 10)
         recent_data = portfolio_daily.head(3)
         for _, row in recent_data.iterrows():
             date_str = str(row.get('date', ''))
@@ -495,18 +499,27 @@ def analyze_portfolio_pacing(
                     # This ensures relative imports (like .utils.logging) resolve correctly
                     # We must import in order: src -> src.utils -> src.utils.logging
                     # This initializes the package namespace properly
+                    # NOTE: All imports are optional - we continue even if some fail
+                    # Only fail if CampaignSpendAnalyzer itself can't be imported
+                    
+                    # Step 1: Import src package (creates src namespace) - optional
                     try:
-                        # Step 1: Import src package (creates src namespace)
                         import src
                         if not hasattr(src, '__path__'):
                             raise ImportError("src is not a package")
-                        
-                        # Step 2: Import src.utils (creates src.utils namespace)
+                    except ImportError as e:
+                        logger.debug(f"⚠️  src package not available: {e}, continuing anyway")
+                    
+                    # Step 2: Import src.utils (creates src.utils namespace) - optional
+                    try:
                         import src.utils
                         if not hasattr(src.utils, '__path__'):
                             raise ImportError("src.utils is not a package")
-                        
-                        # Step 3: Import src.utils.logging (ensures it's accessible)
+                    except ImportError as e:
+                        logger.debug(f"⚠️  src.utils not available: {e}, continuing anyway")
+                    
+                    # Step 3: Import src.utils.logging (optional - may not exist in all setups)
+                    try:
                         import src.utils.logging
                         
                         # CRITICAL: Monkey-patch setup_logger BEFORE importing CampaignSpendAnalyzer
@@ -531,24 +544,35 @@ def analyze_portfolio_pacing(
                         # Monkey-patch the module
                         src.utils.logging.setup_logger = suppressed_setup_logger
                         logger.debug("✅ Monkey-patched setup_logger to suppress console handlers")
-                        
-                        # Step 4: Import src.utils.config (might be needed)
-                        try:
-                            import src.utils.config
-                        except ImportError:
-                            pass  # Optional
-                        
-                        logger.debug("✅ Verified src package structure is importable")
-                    except ImportError as e:
-                        error_msg = f"Failed to initialize src package structure: {e}"
-                        logger.error(error_msg)
-                        raise ImportError(error_msg)
+                    except ImportError:
+                        logger.debug("⚠️  src.utils.logging not available, skipping monkey-patch (will use handler removal instead)")
                     
-                    # Now import CampaignSpendAnalyzer - package structure is initialized
+                    # Step 4: Import src.utils.config (might be needed) - optional
+                    try:
+                        import src.utils.config
+                    except ImportError:
+                        pass  # Optional
+                    
+                    logger.debug("✅ Attempting to import CampaignSpendAnalyzer (package initialization complete or skipped)")
+                    logger.debug(f"   Current directory: {os.getcwd()}")
+                    logger.debug(f"   tool_dir in sys.path: {tool_dir in sys.path}")
+                    logger.debug(f"   tool_dir exists: {os.path.exists(tool_dir)}")
+                    logger.debug(f"   src/campaign_analyzer.py exists: {os.path.exists(os.path.join(tool_dir, 'src', 'campaign_analyzer.py'))}")
+                    
+                    # Now import CampaignSpendAnalyzer - package structure is initialized (or skipped)
                     # This will trigger imports of dependencies, which should now resolve correctly
-                    from src.campaign_analyzer import CampaignSpendAnalyzer
-                    REAL_DATA_AVAILABLE = True
-                    logger.info("✅ CampaignSpendAnalyzer loaded successfully (lazy load)")
+                    try:
+                        from src.campaign_analyzer import CampaignSpendAnalyzer
+                        REAL_DATA_AVAILABLE = True
+                        logger.info("✅ CampaignSpendAnalyzer loaded successfully (lazy load)")
+                    except ImportError as import_err:
+                        # Provide more detailed error information
+                        import traceback
+                        error_details = traceback.format_exc()
+                        logger.error(f"Failed to import CampaignSpendAnalyzer: {import_err}")
+                        logger.error(f"Import traceback:\n{error_details}")
+                        logger.error(f"   sys.path contains: {[p for p in sys.path if 'campaign' in p.lower()]}")
+                        raise ImportError(f"Could not import CampaignSpendAnalyzer from src.campaign_analyzer: {import_err}")
                 finally:
                     os.chdir(original_cwd)
                     # Don't restore sys.path completely - keep tool_dir for module resolution
@@ -609,34 +633,41 @@ def analyze_portfolio_pacing(
                     if tool_dir not in sys.path:
                         sys.path.insert(0, tool_dir)
                     
-                    # Import the logging module
-                    import src.utils.logging as logging_module
-                    original_setup_logger_func = logging_module.setup_logger
-                    logging_module_patched = logging_module
-                    
-                    # Create suppressed version that doesn't add console handlers
-                    def suppressed_setup_logger(name, log_file=None, level=logging.INFO):
-                        """Suppressed version of setup_logger that doesn't add console handlers"""
-                        logger_obj = logging.getLogger(name)
-                        logger_obj.setLevel(logging.CRITICAL)  # Suppress all messages
-                        # Don't add console handler - that's what we're preventing
-                        # Only add file handler if specified (for debugging, but won't show in console)
-                        if log_file:
-                            import os
-                            os.makedirs(os.path.dirname(log_file), exist_ok=True)
-                            file_handler = logging.FileHandler(log_file)
-                            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-                            file_handler.setFormatter(formatter)
-                            logger_obj.addHandler(file_handler)
-                        return logger_obj
-                    
-                    # Monkey-patch the module
-                    logging_module.setup_logger = suppressed_setup_logger
-                    logger.debug("Monkey-patched setup_logger to suppress console handlers")
+                    # Import the logging module (optional - may not exist)
+                    try:
+                        import src.utils.logging as logging_module
+                        original_setup_logger_func = logging_module.setup_logger
+                        logging_module_patched = logging_module
+                        
+                        # Create suppressed version that doesn't add console handlers
+                        def suppressed_setup_logger(name, log_file=None, level=logging.INFO):
+                            """Suppressed version of setup_logger that doesn't add console handlers"""
+                            logger_obj = logging.getLogger(name)
+                            logger_obj.setLevel(logging.CRITICAL)  # Suppress all messages
+                            # Don't add console handler - that's what we're preventing
+                            # Only add file handler if specified (for debugging, but won't show in console)
+                            if log_file:
+                                import os
+                                os.makedirs(os.path.dirname(log_file), exist_ok=True)
+                                file_handler = logging.FileHandler(log_file)
+                                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                                file_handler.setFormatter(formatter)
+                                logger_obj.addHandler(file_handler)
+                            return logger_obj
+                        
+                        # Monkey-patch the module
+                        logging_module.setup_logger = suppressed_setup_logger
+                        logger.debug("Monkey-patched setup_logger to suppress console handlers")
+                    except ImportError:
+                        logger.debug("src.utils.logging not available, skipping monkey-patch (will use handler removal instead)")
+                        original_setup_logger_func = None
+                        logging_module_patched = None
                 finally:
                     os.chdir(original_cwd)
             except Exception as e:
                 logger.debug(f"Could not monkey-patch setup_logger: {e}, using handler removal instead")
+                original_setup_logger_func = None
+                logging_module_patched = None
             
             # Also suppress existing loggers (in case they were already created)
             for logger_name in loggers_to_suppress:

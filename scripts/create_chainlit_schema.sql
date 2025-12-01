@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS "Step" (
     "startTime" TIMESTAMPTZ,   -- CRITICAL: Chainlit expects camelCase "startTime"
     "endTime" TIMESTAMPTZ,     -- CRITICAL: Chainlit expects camelCase "endTime"
     "generation" JSONB,
-    "showInput" BOOLEAN,  -- Made nullable - Chainlit may pass NULL or string values
+    "showInput" TEXT,  -- CRITICAL: Changed from BOOLEAN to TEXT - Chainlit passes string 'json' instead of boolean
     "language" TEXT,
     "indent" INT
 );

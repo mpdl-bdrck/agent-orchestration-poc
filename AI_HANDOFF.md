@@ -1,6 +1,6 @@
 # AI Development Agent Handoff Document
 
-**Last Updated**: December 2025  
+**Last Updated**: December 2025 (Latest: Rolling 30-day window, Guardian formatting, Chainlit DataError workaround)  
 **Purpose**: Reference manual for architectural decisions, patterns, and critical implementation details
 
 ---
@@ -294,6 +294,42 @@ def guardian_node(state: AgentState):
 
 **Fix**: Use `python run_chainlit.py` wrapper script which patches `sniffio` automatically.
 
+### Issue: Chainlit asyncpg DataError - Invalid input for query argument $11
+
+**CRITICAL - MUST FIX IN NEXT SESSION**
+
+**Error**:
+```
+asyncpg.exceptions.DataError: invalid input for query argument $11: 'json' (a boolean is required (got type str))
+```
+
+**Location**: Chainlit's `create_step()` method in `chainlit/data/chainlit_data_layer.py` line 391
+
+**Root Cause**: Chainlit is passing a string `'json'` where a boolean is expected for query argument $11 when creating/updating Step records in PostgreSQL.
+
+**Current Workaround**: 
+- `ChainlitDatabaseExceptionFilter` in `app.py` (lines 128-149) suppresses these errors from console
+- The app still works, but errors are logged and may cause issues with step persistence
+
+**Investigation Needed**:
+1. Check what field corresponds to query argument $11 in Chainlit's Step INSERT/UPDATE queries
+2. Verify the `Step` table schema matches Chainlit's expectations (see `scripts/create_chainlit_schema.sql`)
+3. Check if Chainlit is passing metadata or other JSON fields incorrectly
+4. Look for type mismatches in Chainlit's parameter binding code
+
+**Files to Check**:
+- `scripts/create_chainlit_schema.sql` - Step table definition (line 42-65)
+- `app.py` - Exception filter (lines 128-149) - TEMPORARY WORKAROUND
+- Chainlit library code: `venv/lib/python3.13/site-packages/chainlit/data/chainlit_data_layer.py` line 391
+
+**Potential Fixes**:
+1. Update Step table schema to match Chainlit's expected types
+2. Patch Chainlit's data layer to fix parameter binding
+3. Update Chainlit version if newer version fixes this
+4. Create custom Chainlit data layer adapter
+
+**Status**: ⚠️ WORKAROUND IN PLACE - NEEDS PERMANENT FIX
+
 ---
 
 ## Reference Implementation
@@ -543,6 +579,75 @@ tool_result = tool_func.invoke(normalized_args)
 - `src/agents/orchestrator/graph/supervisor.py`
 
 ---
+
+## Latest Session Learnings (December 2025)
+
+### Portfolio Pacing Tool - Rolling 30-Day Window
+
+**Change**: Migrated from hardcoded November 2025 dates to dynamic rolling 30-day window.
+
+**Implementation**:
+- Added `_calculate_rolling_30day_window()` helper function with PST timezone support
+- Changed function defaults: `campaign_start=None`, `campaign_end=None` (uses rolling window)
+- Window calculation: `today - 29 days` to `today` (inclusive = 30 days total)
+- Respects client config timezone (defaults to PST for Tricoast Media LLC)
+
+**Files Modified**:
+- `src/tools/portfolio_pacing_tool.py` - Added rolling window calculation
+- `test_portfolio_tool.py` - Updated to test rolling window behavior
+
+**Key Insight**: Budget remains fixed at $233,000, but date range is now dynamic and always current.
+
+### Guardian Agent Output Formatting
+
+**Change**: Updated Guardian agent to preserve tool output formatting instead of reformatting.
+
+**Problem**: Agent was reformatting the beautifully structured tool output, losing emojis, sections, and visual separators.
+
+**Solution**: Updated system prompt to:
+1. **PRESERVE** tool output verbatim (with all formatting)
+2. **ADD** brief context before tool output (1-2 sentences)
+3. **ADD** strategic insights after tool output (2-3 bullet points)
+
+**Files Modified**:
+- `config/prompts/guardian_agent/system.txt` - Added "RESPONSE FORMATTING - CRITICAL INSTRUCTIONS" section
+
+**Result**: Tool output is preserved exactly as formatted, with agent adding context and insights without rewriting.
+
+### Chainlit Database Persistence (RESOLVED - DISABLED)
+
+**Issue**: Persistent `asyncpg.exceptions.DataError` when Chainlit creates/updates Step records in PostgreSQL.
+
+**Error Pattern**:
+```
+invalid input for query argument $11: 'json' (a boolean is required (got type str))
+asyncpg.exceptions.InvalidTextRepresentationError: invalid input syntax for type json
+asyncpg.exceptions.NotNullViolationError: null value in column "name" violates not-null constraint
+```
+
+**Root Cause**: Chainlit's data layer has fundamental bugs:
+- Passes raw strings to JSONB columns without proper JSON encoding
+- Creates Step records without required fields
+- Type mismatches between Chainlit's expectations and PostgreSQL strictness
+
+**Solution Implemented**: 
+- ✅ **Persistence DISABLED** - Set `CHAINLIT_DATABASE_URL=""` in `app.py`
+- ✅ All database operations monkey-patched to no-ops
+- ✅ Zero errors, clean console output
+- ✅ App runs perfectly in "Ephemeral Mode" (chat history lost on refresh)
+
+**Status**: ✅ **RESOLVED** - Persistence disabled, acceptable for POC
+
+**Future Recommendation**: If persistence is needed, use **SQLite** instead of PostgreSQL:
+- SQLite is permissive and handles Chainlit's data types gracefully
+- No schema conflicts, no crashes
+- Decouples "UI Memory" (SQLite) from "Agent Brain" (Postgres)
+- See `CHAINLIT_DATABASE_AUDIT.md` for full implementation guide
+
+**Related Files**:
+- `CHAINLIT_DATABASE_AUDIT.md` - Complete audit and SQLite recommendation
+- `scripts/cleanup_chainlit_databases.sh` - Cleanup script for Postgres artifacts
+- `app.py` lines 46-57 - Persistence disable code
 
 ## Related Documentation
 

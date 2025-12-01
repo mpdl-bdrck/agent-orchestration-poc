@@ -44,6 +44,9 @@ from .search.semantic_search import search_knowledge_base, validate_knowledge_ch
 
 logger = logging.getLogger(__name__)
 
+# Global cache for embedding model to avoid reloading on every agent creation
+_global_embedding_model = None
+
 
 class BaseAgent(ABC):
     """Base class for all Agentic CRAG Launchpad agents."""
@@ -165,6 +168,12 @@ class BaseAgent(ABC):
 
     def _create_embedding_model(self):
         """Create local embedding model for semantic search."""
+        global _global_embedding_model
+        
+        # Return cached model if available
+        if _global_embedding_model is not None:
+            return _global_embedding_model
+        
         # Use local sentence-transformers for consistency with SemanticSearchService
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
             logger.error("❌ sentence-transformers not available, falling back to dummy embeddings")
@@ -179,8 +188,15 @@ class BaseAgent(ABC):
             return DummyEmbeddings()
 
         try:
-            model = SentenceTransformer("all-MiniLM-L6-v2")
-            logger.info("✅ Local embedding model loaded successfully for semantic search")
+            # Suppress SentenceTransformer's stdout/stderr during model loading
+            from contextlib import redirect_stdout, redirect_stderr
+            from io import StringIO
+            
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                model = SentenceTransformer("all-MiniLM-L6-v2")
+            
+            # Only log once on first load (use debug to reduce noise)
+            logger.debug("✅ Local embedding model loaded successfully for semantic search")
 
             # Create a wrapper class to match the expected interface
             class LocalEmbeddings:
@@ -196,7 +212,9 @@ class BaseAgent(ABC):
                     embeddings = self.model.encode(texts, show_progress_bar=False)
                     return embeddings.tolist() if hasattr(embeddings, 'tolist') else embeddings
 
-            return LocalEmbeddings(model)
+            # Cache the model globally
+            _global_embedding_model = LocalEmbeddings(model)
+            return _global_embedding_model
 
         except Exception as e:
             logger.error(f"❌ Failed to load local embedding model: {e}, falling back to dummy embeddings")

@@ -4,6 +4,10 @@
 #
 # WARNING: This script will DROP existing Chainlit tables and recreate them.
 # All existing conversation history will be lost!
+#
+# NOTE: Defaults to 'chainlit_db' (dedicated database). Use this script if you
+# need to recreate the schema in an existing database. For initial setup,
+# use ./scripts/init_chainlit_db.sh instead.
 
 set -e
 
@@ -18,8 +22,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "✅ Loaded environment variables from .env"
 fi
 
-# Get database name from argument or use default
-DB_NAME="${1:-knowledge_base}"
+# Get database name from argument, env var, or use default
+DB_NAME="${1:-${CHAINLIT_DB_NAME:-chainlit_db}}"
 
 echo "⚠️  WARNING: This script will DROP existing Chainlit tables!"
 echo "   All conversation history will be deleted."
@@ -72,7 +76,11 @@ echo "   - All datetime columns now use TIMESTAMPTZ (fixes asyncpg datetime erro
 echo "   - Tables dropped and recreated with correct schema"
 echo ""
 echo "📋 Next steps:"
-echo "   1. Restart Chainlit: chainlit run app.py -w"
-echo "   2. Verify no datetime errors in console"
-echo "   3. Check that avatars load correctly"
+echo "   1. Ensure CHAINLIT_DATABASE_URL points to this database in .env"
+echo "   2. Restart Chainlit: chainlit run app.py -w"
+echo "   3. Verify no datetime errors in console"
+echo "   4. Check that avatars load correctly"
+echo ""
+echo "💡 Tip: For initial setup, use ./scripts/init_chainlit_db.sh instead"
+echo "   It creates the database and schema in one step."
 

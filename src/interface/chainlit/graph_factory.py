@@ -86,7 +86,7 @@ Route to appropriate agent or use FINISH if no agents needed."""
             streaming_callback=streaming_callback  # None for Chainlit - events handle display
         )
         
-        logger.info(f"✅ Graph factory: Created graph for context_id={context_id}")
+        logger.debug(f"✅ Graph factory: Created graph for context_id={context_id}")
         return graph
         
     except Exception as e:

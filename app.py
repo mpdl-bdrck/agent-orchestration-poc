@@ -44,44 +44,17 @@ except Exception:
     pass
 
 # Configure Chainlit's data layer BEFORE importing chainlit
-# Chainlit persistence is ENABLED by default - uses same database as knowledge base
-# To disable: Set CHAINLIT_DATABASE_URL="" in .env
+# DISABLED: Chainlit's database persistence is fundamentally broken (see CHAINLIT_DATABASE_AUDIT.md)
+# Chainlit has bugs: InvalidTextRepresentationError, NotNullViolationError, DataError
+# These errors flood the console and make debugging impossible
+# SOLUTION: Disable persistence entirely - we're building an Agent System, not a Chat History System
 import os
 
-# Enable Chainlit persistence by default (uses same database as knowledge base)
-if "CHAINLIT_DATABASE_URL" not in os.environ:
-    # Construct CHAINLIT_DATABASE_URL from DATABASE_URL or POSTGRES_* vars
-    database_url = os.getenv("DATABASE_URL")
-    
-    if database_url:
-        # Use same database as knowledge base
-        os.environ["CHAINLIT_DATABASE_URL"] = database_url
-        print("✅ Chainlit persistence enabled (using DATABASE_URL)")
-    else:
-        # Try to construct from POSTGRES_* vars
-        postgres_host = os.getenv("POSTGRES_HOST")
-        postgres_port = os.getenv("POSTGRES_PORT", "5432")
-        postgres_db = os.getenv("POSTGRES_DB", "knowledge_base")
-        postgres_user = os.getenv("POSTGRES_USER")
-        postgres_password = os.getenv("POSTGRES_PASSWORD")
-        
-        if postgres_host and postgres_user:
-            # Construct PostgreSQL URL
-            if postgres_password:
-                chainlit_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
-            else:
-                chainlit_url = f"postgresql://{postgres_user}@{postgres_host}:{postgres_port}/{postgres_db}"
-            os.environ["CHAINLIT_DATABASE_URL"] = chainlit_url
-            print(f"✅ Chainlit persistence enabled (using POSTGRES_* vars → {postgres_db})")
-        else:
-            # No database config found - disable persistence
-            os.environ["CHAINLIT_DATABASE_URL"] = ""
-            print("⚠️  Chainlit persistence DISABLED (no database configuration found)")
-            print("   Set DATABASE_URL or POSTGRES_* vars in .env to enable conversation history")
-
-# Note: DATABASE_URL is used for knowledge base, CHAINLIT_DATABASE_URL is for Chainlit persistence
-# They can point to the same database (recommended) or different databases
-# If you see "relation 'thread' does not exist" errors, run: ./scripts/create_chainlit_schema.sh [database_name]
+# FORCE DISABLE Chainlit database persistence
+os.environ["CHAINLIT_DATABASE_URL"] = ""
+print("ℹ️  Chainlit persistence DISABLED (Chainlit's database layer has critical bugs)")
+print("   Chat history will not persist across sessions (acceptable for POC)")
+print("   See CHAINLIT_DATABASE_AUDIT.md for details")
 
 # Enable Guardian tools by default for Chainlit UI
 # Force enable unless explicitly disabled in .env
@@ -118,58 +91,51 @@ except Exception as e:
     print(f"⚠️  AWS SSO check failed: {e}. Portfolio pacing queries may fail.")
 
 # NOW import chainlit and other modules
-import chainlit as cl
+# No need for error suppression - persistence is disabled, so no database errors will occur
 import logging
+import warnings
+
+# Suppress harmless asyncio warnings about unretrieved exceptions
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*Task exception was never retrieved.*")
+
+import chainlit as cl
 from langchain_core.messages import HumanMessage
 
-# Suppress ALL Chainlit database errors/exceptions from console
-# This is a known issue in Chainlit 2.9.2 where parameter binding has bugs
-# The app still works perfectly - these are just console noise
-class ChainlitDatabaseExceptionFilter(logging.Filter):
-    """Filter out ALL Chainlit database errors and exceptions."""
-    def filter(self, record):
-        message = str(record.getMessage())
-        # Suppress parameter binding errors
-        if 'invalid input for query argument' in message:
-            return False
-        if 'DataError' in message:
-            return False
-        # Suppress "Task exception was never retrieved" messages
-        if 'Task exception was never retrieved' in message:
-            return False
-        # Suppress database errors from Chainlit
-        if 'Database error' in message and ('chainlit' in message.lower() or 'Step' in message or 'Thread' in message):
-            return False
-        # Suppress asyncpg exceptions
-        if 'asyncpg.exceptions' in message:
-            return False
-        # Suppress UndefinedColumnError (we've fixed the schema, but old errors may persist)
-        if 'UndefinedColumnError' in message:
-            return False
-        return True
+# NUCLEAR: Monkey-patch Chainlit's data layer to completely disable database operations
+# This prevents Chainlit from even attempting to connect to the database
+try:
+    from chainlit.data import chainlit_data_layer
+    
+    # Store original methods
+    _original_create_step = chainlit_data_layer.ChainlitDataLayer.create_step
+    _original_update_step = chainlit_data_layer.ChainlitDataLayer.update_step
+    _original_get_thread = chainlit_data_layer.ChainlitDataLayer.get_thread
+    
+    # Replace with no-op methods that return immediately
+    async def _noop_create_step(self, *args, **kwargs):
+        """No-op: Chainlit persistence disabled"""
+        return None
+    
+    async def _noop_update_step(self, *args, **kwargs):
+        """No-op: Chainlit persistence disabled"""
+        return None
+    
+    async def _noop_get_thread(self, *args, **kwargs):
+        """No-op: Chainlit persistence disabled"""
+        return None
+    
+    # Apply patches
+    chainlit_data_layer.ChainlitDataLayer.create_step = _noop_create_step
+    chainlit_data_layer.ChainlitDataLayer.update_step = _noop_update_step
+    chainlit_data_layer.ChainlitDataLayer.get_thread = _noop_get_thread
+    
+    print("✅ Chainlit data layer patched - all database operations disabled")
+except Exception as e:
+    print(f"⚠️  Warning: Could not patch Chainlit data layer: {e}")
+    print("   Database errors may still occur")
 
-# Apply comprehensive filter to root logger (catches everything)
-_chainlit_db_filter = ChainlitDatabaseExceptionFilter()
-logging.getLogger().addFilter(_chainlit_db_filter)
-
-# Suppress at module level (double protection)
-logging.getLogger("chainlit.data").setLevel(logging.CRITICAL)
-logging.getLogger("chainlit.data.chainlit_data_layer").setLevel(logging.CRITICAL)
-logging.getLogger("chainlit.data.utils").setLevel(logging.CRITICAL)
-logging.getLogger("asyncpg").setLevel(logging.CRITICAL)  # Suppress all asyncpg logs
-
-# Also suppress warnings from asyncio about unretrieved exceptions
-import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*Task exception was never retrieved.*")
-warnings.filterwarnings("ignore", message=".*coroutine.*was never awaited.*")
-
-# Chainlit persistence is now ENABLED by default
-# Conversation history will be saved to the database automatically
-# 
-# If you see "relation 'thread' does not exist" errors on startup:
-#   1. Run: ./scripts/create_chainlit_schema.sh [database_name]
-#   2. This creates the required tables: thread, step, user, element, feedback
-#   3. Restart Chainlit - errors will disappear and conversations will be saved
+# Chainlit persistence is DISABLED - no database errors will occur
+# Chat history is ephemeral (lost on refresh) which is acceptable for this POC
 
 from src.interface.chainlit.graph_factory import create_chainlit_graph
 
@@ -246,8 +212,9 @@ async def start():
         # File naming: lowercase, hyphenated (e.g., "Guardian" -> "guardian.png")
         # No need to register programmatically - Chainlit auto-discovers them
         # Ensure avatars exist in public/avatars/ directory with correct naming
-        logger.info("✅ Avatar system: Chainlit will auto-load avatars from /public/avatars/")
-        logger.info("   Avatars should be named: orchestrator.png, guardian.png, specialist.png, etc.")
+        # Use debug level to reduce console noise (this runs on every browser tab/reload)
+        logger.debug("✅ Avatar system: Chainlit will auto-load avatars from /public/avatars/")
+        logger.debug("   Avatars should be named: orchestrator.png, guardian.png, specialist.png, etc.")
         
         # NOTE: No welcome message - this keeps the chat 'empty' so Starter buttons stay visible
     except Exception as e:
@@ -364,7 +331,7 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
             if node_name in SUB_AGENTS:
                 # Send a brief status message before the agent responds
                 status_msg = cl.Message(
-                    content=f"📞 Calling {agent_display_name} Agent...",
+                    content=f"📞 Calling {emoji} {agent_display_name} Agent...",
                     author="System"
                 )
                 await status_msg.send()

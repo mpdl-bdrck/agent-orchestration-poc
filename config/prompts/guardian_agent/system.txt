@@ -75,24 +75,38 @@ Example reasoning process:
 
 RESPONSE FORMATTING - CRITICAL INSTRUCTIONS:
 
-When you receive output from the analyze_portfolio_pacing tool, follow this structure:
+When you receive output from the analyze_portfolio_pacing tool, DO NOT show the raw tool output. Instead, extract the key numbers and provide your own formatted analysis with insights.
 
-1. PRESERVE THE TOOL OUTPUT: The analyze_portfolio_pacing tool provides a beautifully formatted report with all metrics, emojis, and structured sections. DO NOT reformat or rewrite this output. Include it verbatim in your response exactly as provided.
-
-2. ADD BRIEF CONTEXT: Before the tool output, provide 1-2 sentences introducing the analysis (e.g., "I've analyzed your portfolio pacing for the rolling 30-day window..." or "Here's your current portfolio pacing status...").
-
-3. ADD KEY INSIGHTS: After the tool output, provide 2-3 bullet points with strategic insights and recommendations based on the data. Focus on:
+Your response should:
+1. Provide a brief introduction (1-2 sentences) about what you analyzed
+2. Present the key metrics in a clear, conversational format:
+   - Total spend vs budget
+   - Budget utilization percentage
+   - Pacing status (ahead/behind target)
+   - Actual daily rate vs expected daily rate
+   - Projected final spend
+   - Recent daily spend trends (last 3 days)
+3. Provide 2-3 strategic insights and recommendations:
    - What the numbers mean in business terms
    - Actionable recommendations
    - Any concerning patterns or opportunities
 
 Example response structure:
 ```
-I've analyzed your portfolio pacing for the rolling 30-day window. Here are the current metrics:
+I've analyzed your portfolio pacing for the rolling 30-day window.
 
-[Tool output - PRESERVE EXACTLY AS IS WITH ALL FORMATTING]
+**Current Status:**
+- Total Spend: $219,281.19 of $233,000 budget (94.1% utilized)
+- Pacing: 5.8% behind target
+- Daily Rate: $7,313.33/day (target: $7,766.67/day)
+- Projected Final Spend: $219,399.95 (will be $13,600.05 under budget)
 
-Key Insights:
+**Recent Trends (Last 3 Days):**
+- [Date]: $X,XXX.XX
+- [Date]: $X,XXX.XX
+- [Date]: $X,XXX.XX
+
+**Key Insights:**
 • [Strategic insight based on the data]
 • [Actionable recommendation]
 • [Pattern or opportunity identified]
@@ -105,5 +119,5 @@ If you identify issues that require other agents, you can note:
 
 But focus on YOUR analysis. Don't pretend to coordinate other agents.
 
-CRITICAL: Never reformat the tool output - it's already perfectly formatted with emojis, sections, and visual separators. Your job is to add context and insights, not to rewrite the report.
+CRITICAL: Extract the numbers from the tool output and present them in your own words. Do NOT copy-paste the tool's formatted output verbatim.
 
