@@ -2,12 +2,17 @@
 
 ## Overview
 
-This document describes the two-layer architecture for tool documentation and execution guidance:
+This document describes the **multi-layer architecture** for tool documentation, execution guidance, and runtime control:
 
 1. **System Prompt Toolkit** - Static reference with tool contracts (inputs/outputs)
 2. **Execution Instructions** - Dynamic, contextual guidance loaded from markdown files
+3. **Account Defaults Injection** - Runtime injection of agent-specific defaults (Guardian-specific)
+4. **Tool Holstering** - Runtime prevention of tool usage based on supervisor instructions
+5. **Supervisor Instructions** - Runtime guidance injected via XML tags
 
-## Architecture
+---
+
+## Architecture Layers
 
 ### Layer 1: System Prompt Toolkit (Static Reference)
 
@@ -49,6 +54,8 @@ Returns JSON with analysis results and insights.
 - Pacing analysis requests
 ```
 
+---
+
 ### Layer 2: Execution Instructions (Dynamic, Contextual)
 
 **Purpose**: Provide granular, context-aware instructions when a tool is about to be called.
@@ -68,14 +75,35 @@ tools/
 
 **Implementation**:
 - `src/utils/tool_instructions.py::load_execution_instructions()` loads from markdown
-- `src/utils/agent_loop.py` injects instructions before tool execution
+- `src/utils/agent_loop.py` injects instructions **BEFORE** tool execution (lines 157-183)
 - Instructions are injected as a `HumanMessage` in the message chain
+
+**Timing**: 
+- Instructions are injected **BEFORE** tool execution
+- LLM sees instructions when processing tool results
+- This allows LLM to interpret tool output according to guidance
+
+**Message Format**:
+```python
+instructions_msg = HumanMessage(
+    content=f"TOOL EXECUTION GUIDANCE for {tool_name}:\n\n{execution_instructions}\n\nUse this guidance when interpreting the tool results."
+)
+messages.append(instructions_msg)
+```
 
 **Template Variables**:
 - `{question}` - Current user question
 - `{tool_name}` - Name of the tool
-- `{account_id}` - Account ID being analyzed
-- `{advertiser_filter}` - Advertiser filter if specified
+- `{account_id}` - Account ID being analyzed (from tool_args)
+- `{advertiser_filter}` - Advertiser filter if specified (from tool_args)
+- `{arg_name}` - Any tool argument name (automatically replaced from tool_args)
+
+**Keyword-Based Section Extraction**:
+- Instructions file can have multiple sections (marked with `###`)
+- System matches question keywords to section headers
+- Only relevant sections are extracted and injected
+- Keywords checked: `['trend', 'risk', 'calculate', 'average', 'pacing', 'budget']`
+- If no match found, entire file content is used
 
 **Example** (`tools/campaign-portfolio-pacing/execution_instructions.md`):
 ```markdown
@@ -91,6 +119,166 @@ tools/
 - "To calculate the average over last {N} days:"
 - "Step 1: Sum the spend for dates {dates}: {amounts} = {total}"
 ```
+
+**Error Handling**:
+- If instruction file is missing: Silent failure (logs debug message)
+- If template variable missing: Variable remains as `{variable_name}` in output
+- If file parsing fails: Returns `None`, no instructions injected
+
+---
+
+### Layer 3: Account Defaults Injection (Runtime, Agent-Specific)
+
+**Purpose**: Inject agent-specific default values into system prompt at runtime.
+
+**Location**: Agent-specific implementation (currently Guardian only)
+
+**Implementation**:
+- `src/agents/specialists/guardian_agent.py::analyze()` (lines 277-286)
+- Extracts account info from question using `_extract_account_info()`
+- Injects defaults into system prompt before tool execution
+
+**Example**:
+```python
+system_prompt_with_defaults = f"""
+{system_prompt}
+
+IMPORTANT: When calling analyze_portfolio_pacing tool, use these default values:
+- account_id: "17" (Tricoast Media LLC)
+- advertiser_filter: None
+
+Only override these if the user explicitly specifies a different account or advertiser.
+"""
+```
+
+**When Used**:
+- Only for Guardian agent
+- Only when tools are available and enabled
+- Injected into system prompt before `execute_agent_loop()` is called
+
+---
+
+### Layer 4: Tool Holstering (Runtime Prevention)
+
+**Purpose**: Physically prevent tool usage when supervisor explicitly forbids it.
+
+**Location**: `src/agents/orchestrator/graph/nodes/guardian.py` (lines 41-131)
+
+**How It Works**:
+
+1. **Detection** (lines 46-55): Checks supervisor instruction for explicit "no tools" directives:
+   - "strictly forbidden from using tools"
+   - "do not use tools"
+   - "text only"
+   - "speak text only"
+   - "forbidden from using"
+   - "must not use tools"
+
+2. **Execution Path Selection** (lines 98-131):
+   - **If holstered**: Calls `agent.analyze_without_tools()` (line 103)
+   - **If not holstered**: Normal path with tools available
+
+3. **Agent-Level Implementation** (`src/agents/specialists/guardian_agent.py`):
+   - `analyze_without_tools()` (lines 190-228): Runs LLM without binding tools
+   - `analyze()` (line 231): Accepts `use_tools` parameter (default: True)
+   - When `use_tools=False`: Falls back to `super().analyze()` (no tool binding)
+
+**Example Supervisor Instruction**:
+```
+<supervisor_instruction>
+STRICTLY FORBIDDEN from using tools. This is a greeting/introduction request. 
+Respond with text only.
+</supervisor_instruction>
+```
+
+**Logging**:
+- Holster status is logged: `"✅ Tool Holster ACTIVE - tools will be disabled"`
+- Instruction is logged: `"Guardian node - Instruction: '{instruction}' | Holster tools: {should_holster_tools}"`
+
+**Fallback Mechanism**:
+- If `analyze_without_tools()` doesn't exist: Falls back to `call_specialist_agent_func()` with `use_tools=False`
+- If agent doesn't support holstering: Tools remain available (no prevention)
+
+**When to Use**:
+- Greetings/introductions
+- General conversation
+- Questions that don't require data retrieval
+- When supervisor explicitly forbids tools
+
+**Why Not Prompt-Based Prevention?**:
+- Fast models (like Gemini Flash) often ignore "do not use tools" prompts
+- Physical removal is more reliable than hoping LLM won't call tools
+- Prevents crashes from unnecessary tool calls
+
+---
+
+### Layer 5: Supervisor Instructions (Runtime Guidance)
+
+**Purpose**: Inject runtime guidance from supervisor into agent prompts.
+
+**Location**: `src/agents/specialists/guardian_agent.py::analyze()` (line 273)
+
+**Implementation**:
+- Supervisor instruction passed via `supervisor_instruction` parameter
+- Injected into system prompt via `_get_system_prompt(supervisor_instruction=supervisor_instruction)`
+- Wrapped in XML tags: `<supervisor_instruction>...</supervisor_instruction>`
+
+**Example**:
+```python
+system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
+```
+
+**Format**:
+- XML tags: `<supervisor_instruction>...</supervisor_instruction>`
+- Can contain tool holstering directives
+- Can contain specific task instructions
+- Can contain context about why agent was called
+
+---
+
+## Complete Flow Diagram
+
+```
+User Question
+    ↓
+Supervisor Node (Structured Output)
+    ↓
+RouteDecision with instruction
+    ↓
+Guardian Node
+    ↓
+Check Supervisor Instruction
+    ├─ Contains "forbidden from using tools"?
+    │   ├─ YES → Tool Holster ACTIVE
+    │   │   └─ Call analyze_without_tools()
+    │   │       └─ LLM runs WITHOUT tools bound
+    │   └─ NO → Tool Holster INACTIVE
+    │       └─ Call analyze() with use_tools=True
+    │           ↓
+    │       Build System Prompt
+    │       ├─ Base prompt
+    │       ├─ Toolkit reference (Layer 1)
+    │       ├─ Account defaults (Layer 3)
+    │       └─ Supervisor instruction (Layer 5)
+    │           ↓
+    │       Execute Agent Loop
+    │           ↓
+    │       LLM decides to call tool
+    │           ↓
+    │       Load Execution Instructions (Layer 2)
+    │       ├─ Read markdown file
+    │       ├─ Replace template variables
+    │       ├─ Extract relevant sections
+    │       └─ Inject as HumanMessage BEFORE tool execution
+    │           ↓
+    │       Execute Tool
+    │           ↓
+    │       LLM processes tool result WITH instructions
+    │           ↓
+    │       Return formatted response
+```
+
+---
 
 ## Implementation Details
 
@@ -123,41 +311,126 @@ execution_instructions = load_execution_instructions(
 ### 3. Injecting Instructions in Agent Loop
 
 The `execute_agent_loop` function in `src/utils/agent_loop.py` automatically:
-1. Detects when a tool is about to be called
-2. Loads execution instructions from markdown file
-3. Injects instructions as a `HumanMessage` before tool execution
+1. Detects when a tool is about to be called (line 155)
+2. Loads execution instructions from markdown file (lines 158-173)
+3. Injects instructions as a `HumanMessage` **BEFORE** tool execution (lines 175-180)
 4. LLM sees instructions when processing tool results
+
+**Code Location**: `src/utils/agent_loop.py` lines 157-183
+
+### 4. Tool Holstering Implementation
+
+**Node Level** (`src/agents/orchestrator/graph/nodes/guardian.py`):
+```python
+# Check supervisor instruction for "no tools" directives
+instruction_lower = instruction.lower()
+explicit_no_tools_directives = [
+    "strictly forbidden from using tools",
+    "do not use tools",
+    "text only",
+    # ... more directives
+]
+should_holster_tools = any(directive in instruction_lower for directive in explicit_no_tools_directives)
+
+if should_holster_tools:
+    result = agent.analyze_without_tools(...)
+else:
+    result = call_specialist_agent_func(...)  # Normal path with tools
+```
+
+**Agent Level** (`src/agents/specialists/guardian_agent.py`):
+```python
+def analyze_without_tools(self, question: str, context: str, supervisor_instruction: str = None):
+    """Run LLM WITHOUT binding tools."""
+    system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+    
+    # Call LLM WITHOUT binding tools
+    response = self.llm.invoke(messages)  # No .bind_tools() call
+    return {'answer': response.content}
+```
+
+### 5. Account Defaults Injection
+
+**Location**: `src/agents/specialists/guardian_agent.py::analyze()` (lines 277-286)
+
+```python
+# Extract account info from question
+account_info = self._extract_account_info(question)
+
+# Inject account defaults into system prompt
+system_prompt_with_defaults = f"""
+{system_prompt}
+
+IMPORTANT: When calling analyze_portfolio_pacing tool, use these default values:
+- account_id: "{account_info['account_id']}" (Tricoast Media LLC)
+- advertiser_filter: {f'"{account_info["advertiser_filter"]}"' if account_info['advertiser_filter'] else 'None'}
+
+Only override these if the user explicitly specifies a different account or advertiser.
+"""
+```
+
+---
 
 ## File Locations
 
 ### Utility Functions
 - `src/utils/tool_instructions.py` - Core utilities for toolkit reference and execution instructions
+  - `build_toolkit_reference()` - Generates static toolkit reference
+  - `load_execution_instructions()` - Loads and processes dynamic instructions
 
 ### Agent Integration
-- `src/agents/specialists/guardian_agent.py` - Example implementation with `_get_system_prompt()` override
-- `src/utils/agent_loop.py` - Automatic instruction injection
+- `src/agents/specialists/guardian_agent.py` - Example implementation
+  - `_get_system_prompt()` - Appends toolkit reference
+  - `analyze()` - Handles account defaults injection
+  - `analyze_without_tools()` - Tool holstering implementation
+- `src/utils/agent_loop.py` - Automatic instruction injection (lines 157-183)
+
+### Graph Node Integration
+- `src/agents/orchestrator/graph/nodes/guardian.py` - Tool holstering detection (lines 41-131)
 
 ### Execution Instructions
 - `tools/campaign-portfolio-pacing/execution_instructions.md` - Example execution instructions
 
+---
+
 ## Benefits
 
-1. **Separation of Concerns**: Contracts vs. execution guidance
+1. **Separation of Concerns**: Contracts vs. execution guidance vs. runtime control
 2. **Maintainable**: Markdown files alongside tool code
 3. **Version Controlled**: Instructions tracked with tool changes
 4. **Context-Aware**: Instructions adapt to question keywords
 5. **Scalable**: Easy to add tools and instructions
 6. **Developer-Friendly**: Clear structure for maintaining instructions
+7. **Reliable**: Physical tool holstering prevents unwanted tool calls
+8. **Flexible**: Multiple layers allow fine-grained control
+
+---
 
 ## Adding New Tools
 
 ### Step 1: Create Execution Instructions File
 
 Create `tools/{tool_name}/execution_instructions.md` with:
-- Context-aware guidance sections
-- Keyword-based detection
+- Context-aware guidance sections (marked with `###`)
+- Keyword-based detection in section headers
 - Example response patterns
-- Template variables
+- Template variables (e.g., `{question}`, `{tool_name}`, `{arg_name}`)
+
+**Example Structure**:
+```markdown
+### When user asks for calculations
+
+**Keywords**: "average", "calculate", "compute", "sum"
+
+**Focus Areas**:
+- Use specific data fields for calculations
+- Show work step-by-step
+
+**Example Response Pattern**:
+- "To calculate {metric}:"
+- "Step 1: {calculation}"
+```
 
 ### Step 2: Update Tool Path Mappings (Optional)
 
@@ -171,13 +444,54 @@ tool_path_mappings = {
 }
 ```
 
+**File**: `src/utils/tool_instructions.py` (lines 130-136)
+
 ### Step 3: Agent Auto-Generates Toolkit Reference
 
 The agent will automatically generate toolkit reference from tool schemas when `_get_system_prompt()` is called.
+
+### Step 4: Implement Tool Holstering (Optional)
+
+If your agent needs tool holstering:
+1. Implement `analyze_without_tools()` method
+2. Update graph node to check supervisor instructions
+3. Call `analyze_without_tools()` when holstering is active
+
+---
 
 ## Maintenance
 
 - **Toolkit Reference**: Auto-generated from tool schemas - no manual maintenance needed
 - **Execution Instructions**: Maintained by developers in markdown files alongside tool code
 - **Template Variables**: Updated automatically at runtime based on question and tool args
+- **Account Defaults**: Agent-specific, maintained in agent code
+- **Tool Holstering**: Supervisor-driven, no maintenance needed
 
+---
+
+## Error Handling
+
+### Execution Instructions
+- **File Missing**: Silent failure, logs debug message, no instructions injected
+- **Template Variable Missing**: Variable remains as `{variable_name}` in output
+- **File Parsing Error**: Returns `None`, no instructions injected
+
+### Tool Holstering
+- **Method Missing**: Falls back to `call_specialist_agent_func()` with `use_tools=False`
+- **Agent Doesn't Support**: Tools remain available (no prevention)
+
+### Account Defaults
+- **Extraction Fails**: Uses default values from `_extract_account_info()`
+- **No Account Info**: Defaults to account_id="17", advertiser_filter=None
+
+---
+
+## Related Documentation
+
+- **Tool Development Guide**: See `AI_HANDOFF.md` ADR-001 (Robust Tool Execution Strategy)
+- **Tool Holstering**: See `docs/incidents/2025-11-29-guardian-loop.md` (Three-Layer Defense)
+- **Canary Pattern**: See `src/tools/portfolio_pacing_tool.py` (Example implementation)
+
+---
+
+**Last Updated**: December 1, 2025

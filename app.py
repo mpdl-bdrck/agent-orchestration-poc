@@ -351,6 +351,8 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
         content = None
         if hasattr(chunk, 'content') and chunk.content:
             # Normalize content to string (chunk.content can be a list in LangChain)
+            # CRITICAL: Don't use .strip() - it removes leading/trailing spaces needed for proper word spacing
+            # When Gemini streams ["analyzed", " your"], the second chunk has a leading space that must be preserved
             raw_content = chunk.content
             if isinstance(raw_content, list):
                 text_parts = []
@@ -362,11 +364,14 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
                             text_parts.append(str(block["text"]))
                     elif isinstance(block, str):
                         text_parts.append(block)
-                content = " ".join(text_parts).strip()
+                # Join with space but DON'T strip - preserve whitespace for proper word spacing
+                content = " ".join(text_parts)
             elif isinstance(raw_content, str):
-                content = raw_content.strip()
+                # Don't strip - preserve leading/trailing whitespace
+                content = raw_content
             elif raw_content:
-                content = str(raw_content).strip()
+                # Don't strip - preserve whitespace
+                content = str(raw_content)
         
         # STRICT CHECK: Only create Orchestrator message if we have actual content
         if node_name == SUPERVISOR_NODE:

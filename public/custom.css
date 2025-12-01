@@ -24,3 +24,22 @@ header,
     justify-content: center !important;
     align-items: center !important;
 }
+
+/* Fix "Glued Words" Issue - Preserve whitespace during streaming */
+/* Force the browser to respect ALL whitespace in messages */
+/* This prevents words from being merged together when streaming chunks arrive */
+.markdown-body,
+.message-content,
+[class*="message"] [class*="content"],
+[class*="message"] p {
+    white-space: pre-wrap !important;
+}
+
+/* Ensure word breaking still happens at logical points */
+.markdown-body p,
+.markdown-body li,
+.message-content p,
+.message-content li {
+    word-break: break-word;
+    white-space: pre-wrap !important;
+}
