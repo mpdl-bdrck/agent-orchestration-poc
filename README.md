@@ -6,11 +6,11 @@ A robust, multi-agent orchestration system built on **LangGraph**, **LangChain**
 
 - **LangGraph Supervisor Architecture**: A central Orchestrator node uses structured outputs (`RouteDecision`) to intelligently route tasks to specialist agents or knowledge base tools.
 - **"Glass Box" Visibility**: Real-time streaming of agent reasoning, tool inputs, and state transitions via Chainlit.
-- **Robust Tooling**: Implements the **"Canary Pattern"** and **Double-Ended Sanitation** to prevent LLM-induced crashes (handling malformed list/string inputs).
+- **Robust Tooling**: Tools handle malformed inputs gracefully, preventing LLM-induced crashes.
 - **Cost & Inhibition Protocols**: "Tool Holster" logic prevents agents from using expensive tools for simple greetings or out-of-scope queries.
 - **Hybrid Interface**: 
   - **CLI**: Detailed debug/reasoning output.
-  - **Chainlit UI**: Modern, split-view interface (Orchestrator in main chat, Agents in nested steps).
+  - **Chainlit UI**: Modern multi-agent chat interface with real-time streaming and agent-specific chat bubbles.
 
 ## 🤖 Agent Roster
 
@@ -88,35 +88,17 @@ GEMINI_API_KEY=your_key_here
 # Knowledge Base (Vector Storage) - LOCAL PostgreSQL
 DATABASE_URL=postgresql://postgres:password@localhost:5432/knowledge_base
 
-# Chainlit UI Persistence (Conversation History) - LOCAL PostgreSQL
-# Use dedicated database to prevent schema conflicts
-CHAINLIT_DATABASE_URL=postgresql://postgres:password@localhost:5432/chainlit_db
-
 # PostgreSQL Connection (for scripts) - LOCAL only
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_password_here
-
-# Optional: Override default chainlit database name
-# CHAINLIT_DB_NAME=chainlit_db
 ```
 
 **Important**: 
 - This setup uses **LOCAL PostgreSQL** only (localhost)
-- Chainlit uses a **dedicated database** (`chainlit_db`) separate from the knowledge base
-- This prevents schema conflicts and datetime casting errors
-
-**Quick Setup**:
-```bash
-# 1. Ensure PostgreSQL is running locally
-pg_isready
-
-# 2. Initialize Chainlit database (creates chainlit_db and schema)
-./scripts/init_chainlit_db.sh
-
-# 3. The script will show you the exact CHAINLIT_DATABASE_URL to add to .env
-```
+- Chainlit persistence is currently disabled (acceptable for POC)
+- If you need conversation history persistence, see [`docs/CHAINLIT_SQLITE_PERSISTENCE.md`](docs/CHAINLIT_SQLITE_PERSISTENCE.md) for SQLite setup
 
 ### 4. Knowledge Base Ingestion
 
@@ -178,13 +160,9 @@ chainlit run app.py -w
 python -m src.interface.cli.main --context-id bedrock_kb
 ```
 
-## 🛡️ Stability Patterns (The "Anti-Crash" Layer)
+## 🛡️ Stability & Reliability
 
-This project implements specific patterns to handle "Eager" LLMs (like Gemini Flash) that often hallucinate input formats:
-
-1.  **Middleware Normalization**: `agent_loop.py` recursively unwraps nested lists before they hit Pydantic validation.
-2.  **The Canary Pattern**: Tools use `@tool` decorators with internal `safe_str` sanitizers rather than strict Pydantic schemas, preventing schema validation crashes.
-3.  **Validation Bypass**: The execution loop attempts to call the raw Python function (`.func`) directly to bypass LangChain's internal validation layer when necessary.
+This project implements robust error handling to prevent crashes from malformed LLM inputs. The system includes middleware normalization, input sanitization, and validation bypass mechanisms to ensure reliable operation even with unpredictable LLM outputs.
 
 ## 📂 Project Structure
 
@@ -205,7 +183,7 @@ src/
 
 **Cause:** The LLM sent `['value']` instead of `"value"`.
 
-**Fix:** Already handled by the **Double-Ended Sanitation** layer. If this recurs, ensure you are using `guardian_v2_tool.py` and not the legacy version.
+**Fix:** Already handled by middleware normalization. The system automatically unwraps nested lists and sanitizes inputs before validation.
 
 **Issue:** Infinite loops or "Ghost" output.
 
@@ -219,22 +197,12 @@ src/
 
 **Fix:** Use Python 3.13 instead. Run `./setup_python313.sh` to set up a compatible environment.
 
-**Issue:** `asyncpg.exceptions.DataError: invalid input for query argument` or `relation "Thread" does not exist`
-
-**Cause:** Chainlit database schema is missing or incorrect. This happens when:
-- Database doesn't exist
-- Schema has TEXT columns instead of TIMESTAMPTZ (causes datetime casting errors)
-- Chainlit is sharing the same database as knowledge_base (schema conflicts)
-
-**Fix:** 
-1. Run `./scripts/init_chainlit_db.sh` to create dedicated `chainlit_db` database with correct schema
-2. Add `CHAINLIT_DATABASE_URL` to `.env` (the script shows you the exact value)
-3. Restart Chainlit - errors should disappear
-
-**Note:** Chainlit uses a dedicated database (`chainlit_db`) separate from the knowledge base (`knowledge_base`) to prevent schema conflicts.
 
 ## 📚 Documentation
 
-- **`AI_HANDOFF.md`**: Comprehensive architectural decisions, patterns, and troubleshooting guide
-- **`docs/chainlit_ui_implementation_plan.md`**: Chainlit UI implementation details
-- **`docs/chainlit_ui_tickets.md`**: Implementation ticket tracking
+### Core Architecture
+- **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development, holstering, and instruction injection at runtime
+
+### UI & Persistence
+- **`docs/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite (recommended approach)
+- **`docs/PROACTIVE_NOTIFICATION_PANEL.md`**: North star feature - transforming from reactive chatbot to proactive command center

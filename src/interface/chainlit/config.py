@@ -45,7 +45,7 @@ except Exception:
     pass
 
 # Configure Chainlit's data layer BEFORE importing chainlit
-# DISABLED: Chainlit's database persistence is fundamentally broken (see CHAINLIT_DATABASE_AUDIT.md)
+# DISABLED: Chainlit's database persistence is fundamentally broken (see CHAINLIT_SQLITE_PERSISTENCE.md)
 # Chainlit has bugs: InvalidTextRepresentationError, NotNullViolationError, DataError
 # These errors flood the console and make debugging impossible
 # SOLUTION: Disable persistence entirely - we're building an Agent System, not a Chat History System
@@ -58,7 +58,7 @@ _GLOBAL_CSV_STORAGE = {}
 os.environ["CHAINLIT_DATABASE_URL"] = ""
 print("ℹ️  Chainlit persistence DISABLED (Chainlit's database layer has critical bugs)")
 print("   Chat history will not persist across sessions (acceptable for POC)")
-print("   See CHAINLIT_DATABASE_AUDIT.md for details")
+print("   See CHAINLIT_SQLITE_PERSISTENCE.md for details")
 
 # Enable Guardian tools by default for Chainlit UI
 # Force enable unless explicitly disabled in .env
@@ -113,6 +113,7 @@ try:
     _original_create_step = chainlit_data_layer.ChainlitDataLayer.create_step
     _original_update_step = chainlit_data_layer.ChainlitDataLayer.update_step
     _original_get_thread = chainlit_data_layer.ChainlitDataLayer.get_thread
+    _original_create_element = chainlit_data_layer.ChainlitDataLayer.create_element
     
     # Replace with no-op methods that return immediately
     async def _noop_create_step(self, *args, **kwargs):
@@ -127,10 +128,15 @@ try:
         """No-op: Chainlit persistence disabled"""
         return None
     
+    async def _noop_create_element(self, *args, **kwargs):
+        """No-op: Chainlit persistence disabled - prevents Element table errors"""
+        return None
+    
     # Apply patches
     chainlit_data_layer.ChainlitDataLayer.create_step = _noop_create_step
     chainlit_data_layer.ChainlitDataLayer.update_step = _noop_update_step
     chainlit_data_layer.ChainlitDataLayer.get_thread = _noop_get_thread
+    chainlit_data_layer.ChainlitDataLayer.create_element = _noop_create_element
     
     print("✅ Chainlit data layer patched - all database operations disabled")
 except Exception as e:

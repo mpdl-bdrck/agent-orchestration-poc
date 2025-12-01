@@ -38,7 +38,7 @@ Sharing databases causes:
    ```bash
    CHAINLIT_DATABASE_URL=postgresql://user:password@host:5432/chainlit_db
    ```
-
+   
 3. **Restart Chainlit:**
    ```bash
    chainlit run app.py -w

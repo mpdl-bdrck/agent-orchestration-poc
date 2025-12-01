@@ -1,4 +1,4 @@
-# Usage Guide - Agentic CRAG Launchpad
+# Usage Guide - Bedrock Agent Orchestration POC
 
 ## Quick Start
 

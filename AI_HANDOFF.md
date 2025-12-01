@@ -642,10 +642,10 @@ asyncpg.exceptions.NotNullViolationError: null value in column "name" violates n
 - SQLite is permissive and handles Chainlit's data types gracefully
 - No schema conflicts, no crashes
 - Decouples "UI Memory" (SQLite) from "Agent Brain" (Postgres)
-- See `CHAINLIT_DATABASE_AUDIT.md` for full implementation guide
+- See `CHAINLIT_SQLITE_PERSISTENCE.md` for full implementation guide
 
 **Related Files**:
-- `CHAINLIT_DATABASE_AUDIT.md` - Complete audit and SQLite recommendation
+- `CHAINLIT_SQLITE_PERSISTENCE.md` - SQLite persistence guide
 - `scripts/cleanup_chainlit_databases.sh` - Cleanup script for Postgres artifacts
 - `app.py` lines 46-57 - Persistence disable code
 

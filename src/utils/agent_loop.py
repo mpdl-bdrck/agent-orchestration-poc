@@ -329,9 +329,13 @@ def execute_agent_loop(
                                                 continue
                                             try:
                                                 if hasattr(mod, '_GLOBAL_CSV_STORAGE'):
-                                                    app_module = mod
-                                                    logger.info(f"[{job_name}] Found app module via search: {mod_name}")
-                                                    break
+                                                    # CRITICAL: Check if _GLOBAL_CSV_STORAGE is actually a dict
+                                                    # Some modules (like torch.ops) have this attribute but it's not a dict
+                                                    storage = getattr(mod, '_GLOBAL_CSV_STORAGE')
+                                                    if isinstance(storage, dict):
+                                                        app_module = mod
+                                                        logger.info(f"[{job_name}] Found app module via search: {mod_name}")
+                                                        break
                                             except Exception:
                                                 continue
                                     
