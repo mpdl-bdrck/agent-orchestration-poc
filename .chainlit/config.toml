@@ -49,6 +49,7 @@ reaction_on_message_received = false
 [features.spontaneous_file_upload]
     enabled = true
     # Define accepted file types using MIME types
+    # Changed from "*/*" to specific types to avoid browser warnings
     # Examples:
     # 1. For specific file types:
     #    accept = ["image/jpeg", "image/png", "application/pdf"]
@@ -57,7 +58,17 @@ reaction_on_message_received = false
     # 3. For specific file extensions:
     #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
     # Note: Using "*/*" is not recommended as it may cause browser warnings
-    accept = ["*/*"]
+    accept = [
+        "text/csv",                    # CSV files
+        "application/pdf",              # PDF files
+        "application/vnd.ms-excel",    # Excel files (.xls)
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Excel files (.xlsx)
+        "image/jpeg",                   # Images
+        "image/png",
+        "image/gif",
+        "text/plain",                   # Text files
+        "application/json"              # JSON files
+    ]
     max_files = 20
     max_size_mb = 500
 
@@ -113,7 +124,7 @@ default_expand_messages = true
 
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-custom_css = "/public/custom.css"
+custom_css = "/public/custom.css?v=4"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""

@@ -25,21 +25,137 @@ header,
     align-items: center !important;
 }
 
-/* Fix "Glued Words" Issue - Preserve whitespace during streaming */
-/* Force the browser to respect ALL whitespace in messages */
-/* This prevents words from being merged together when streaming chunks arrive */
+/* REMOVED: pre-line CSS - was causing excessive spacing */
+/* The "glued words" issue was fixed by removing Python-side normalization */
+/* Chainlit's default whitespace handling works fine now - no need for pre-line */
+
+/* Ensure proper word breaking without preserving all whitespace */
 .markdown-body,
 .message-content,
-[class*="message"] [class*="content"],
-[class*="message"] p {
-    white-space: pre-wrap !important;
+[class*="message"] [class*="content"] {
+    word-wrap: break-word !important;
 }
 
-/* Ensure word breaking still happens at logical points */
+/* For paragraphs and list items, ensure proper word breaking */
 .markdown-body p,
 .markdown-body li,
 .message-content p,
 .message-content li {
-    word-break: break-word;
-    white-space: pre-wrap !important;
+    word-break: break-word !important;
+}
+
+/* Hide Chainlit Readme and Theme Selector buttons - AGGRESSIVE SELECTORS */
+/* Hide Readme button - multiple selectors for maximum coverage */
+#readme-button,
+button[aria-label*="Readme"],
+button[aria-label*="readme"],
+button[aria-label*="README"],
+[data-testid*="readme"],
+[data-testid*="Readme"],
+[class*="readme-button"],
+[class*="ReadmeButton"],
+nav button:has(svg[class*="Book"]),
+nav button:has(svg[class*="book"]),
+nav a[href*="readme"],
+nav a[href*="/readme"],
+header nav button:nth-last-child(2),
+header nav a[href*="readme"],
+.header-right a[href="/readme"],
+.header-right a[href*="readme"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Hide Theme Selector button - multiple selectors for maximum coverage */
+#theme-toggle,
+button[aria-label*="Theme"],
+button[aria-label*="theme"],
+button[aria-label*="THEME"],
+[data-testid*="theme"],
+[data-testid*="Theme"],
+[class*="theme-selector"],
+[class*="ThemeSelector"],
+nav button:has(svg[class*="Sun"]),
+nav button:has(svg[class*="Moon"]),
+nav button:has(svg[class*="sun"]),
+nav button:has(svg[class*="moon"]),
+header nav button:nth-last-child(1),
+.header-right button[aria-label*="theme"],
+.header-right button[aria-label*="Theme"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Hide entire header-right container if it only contains these buttons */
+.header-right:has(> div:only-child > a[href="/readme"]),
+.header-right:has(> div:only-child > button[aria-label*="theme"]) {
+    display: none !important;
+}
+
+/* Nuclear option: Hide all buttons in header nav except logo */
+header nav button:not(:first-child),
+header nav a:not(:first-child) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+}
+
+/* EXTREME: Hide entire header-right section if it exists */
+.header-right,
+header > div:last-child,
+header nav > div:last-child {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Hide any button or link that contains "readme" or "theme" in any form */
+*[href*="readme"],
+*[href*="Readme"],
+*[href*="README"],
+*[aria-label*="readme"],
+*[aria-label*="Readme"],
+*[aria-label*="theme"],
+*[aria-label*="Theme"],
+*[title*="readme"],
+*[title*="Readme"],
+*[title*="theme"],
+*[title*="Theme"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Fix CSV file message box sizing - ensure filename displays properly */
+.cl-message[author="System"] .message-content,
+.cl-message .message-content[class*="System"] {
+    min-width: fit-content !important;
+    max-width: 100% !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+}
+
+/* Ensure file elements display properly */
+.cl-file,
+[class*="file"],
+[class*="File"] {
+    display: inline-block !important;
+    max-width: 100% !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
 }

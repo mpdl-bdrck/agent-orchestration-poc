@@ -259,24 +259,139 @@ def execute_agent_loop(
                             logger.error(f"[{job_name}] Normalized args: {normalized_args}")
                             # This will likely crash, but at least we'll have full diagnostics
                             tool_result = tool_func.invoke(normalized_args)
+                        
+                        # Parse JSON result if tool returns JSON with CSV data
+                        csv_data = None
+                        csv_filename = None
+                        result_text = str(tool_result)
+                        
+                        try:
+                            import json
+                            parsed = json.loads(result_text)
+                            if isinstance(parsed, dict) and "csv" in parsed:
+                                # Tool returned JSON with CSV data
+                                csv_data = parsed.get("csv")
+                                csv_filename = parsed.get("filename")
+                                result_text = parsed.get("text", result_text)  # Use text from JSON
+                                logger.info(f"[{job_name}] ✅ Parsed JSON result with CSV data for {tool_name}: filename={csv_filename}, csv_len={len(csv_data) if csv_data else 0}")
+                                
+                                # CRITICAL: Store CSV in multiple locations for Chainlit access
+                                # 1. Module-level dict (for direct access)
+                                if not hasattr(execute_agent_loop, '_csv_storage'):
+                                    execute_agent_loop._csv_storage = {}
+                                
+                                storage_key = f"{job_name}_{tool_name}"
+                                execute_agent_loop._csv_storage[storage_key] = {
+                                    "csv": csv_data,
+                                    "filename": csv_filename,
+                                    "timestamp": __import__('time').time()
+                                }
+                                logger.info(f"[{job_name}] Stored CSV in agent_loop._csv_storage[{storage_key}]")
+                                
+                                # ALSO store in a file-based cache (most reliable - survives module reloads)
+                                try:
+                                    import json
+                                    import os
+                                    import tempfile
+                                    cache_dir = os.path.join(tempfile.gettempdir(), "chainlit_csv_cache")
+                                    os.makedirs(cache_dir, exist_ok=True)
+                                    cache_file = os.path.join(cache_dir, f"{storage_key}.json")
+                                    with open(cache_file, 'w') as f:
+                                        json.dump({
+                                            "csv": csv_data,
+                                            "filename": csv_filename,
+                                            "node_name": job_name.split("_")[0] if "_" in job_name else job_name
+                                        }, f)
+                                    logger.info(f"[{job_name}] ✅ ALSO stored CSV in file cache: {cache_file}")
+                                except Exception as e:
+                                    logger.debug(f"[{job_name}] Could not store CSV in file cache: {e}")
+                                
+                                # 2. ALSO store in global app.py storage (bypasses import issues)
+                                try:
+                                    import sys
+                                    # Try multiple module names (app.py might be loaded as 'app' or '__main__')
+                                    app_module = None
+                                    for module_name in ['app', '__main__']:
+                                        if module_name in sys.modules:
+                                            try:
+                                                candidate = sys.modules[module_name]
+                                                if hasattr(candidate, '_GLOBAL_CSV_STORAGE'):
+                                                    app_module = candidate
+                                                    logger.info(f"[{job_name}] Found app module: {module_name}")
+                                                    break
+                                            except Exception:
+                                                continue
+                                    
+                                    # Also try to find it by checking all modules for _GLOBAL_CSV_STORAGE
+                                    if not app_module:
+                                        for mod_name, mod in sys.modules.items():
+                                            if mod is None:
+                                                continue
+                                            try:
+                                                if hasattr(mod, '_GLOBAL_CSV_STORAGE'):
+                                                    app_module = mod
+                                                    logger.info(f"[{job_name}] Found app module via search: {mod_name}")
+                                                    break
+                                            except Exception:
+                                                continue
+                                    
+                                    if app_module:
+                                        try:
+                                            app_module._GLOBAL_CSV_STORAGE[storage_key] = {
+                                                "csv": csv_data,
+                                                "filename": csv_filename,
+                                                "node_name": job_name.split("_")[0] if "_" in job_name else job_name
+                                            }
+                                            logger.info(f"[{job_name}] ✅ ALSO stored CSV in app._GLOBAL_CSV_STORAGE[{storage_key}]")
+                                        except AttributeError as ae:
+                                            logger.warning(f"[{job_name}] ⚠️ _GLOBAL_CSV_STORAGE attribute error: {ae}")
+                                        except Exception as e:
+                                            logger.warning(f"[{job_name}] ⚠️ Error storing in _GLOBAL_CSV_STORAGE: {e}")
+                                    else:
+                                        logger.warning(f"[{job_name}] ⚠️ Could not find app module in sys.modules (searched all modules)")
+                                except Exception as e:
+                                    logger.warning(f"[{job_name}] ⚠️ Could not store CSV in global storage: {e}")
+                                
+                                # 3. ALSO store in Chainlit session via streaming callback (if available)
+                                # This bypasses import issues after Chainlit reloads
+                                if streaming_callback:
+                                    try:
+                                        # Try to access Chainlit session via callback context
+                                        # Store CSV data in callback metadata for later retrieval
+                                        streaming_callback("csv_data", csv_data, {
+                                            "csv": csv_data,
+                                            "filename": csv_filename,
+                                            "storage_key": storage_key,
+                                            "node_name": job_name.split("_")[0] if "_" in job_name else job_name
+                                        })
+                                    except Exception as e:
+                                        logger.debug(f"Could not store CSV via callback: {e}")
+                        except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+                            # Not JSON or doesn't contain CSV - use result as-is
+                            pass
+                        
                         tool_calls.append({
                             "tool": tool_name,
                             "args": tool_args,
-                            "result": tool_result
+                            "result": result_text,  # Text result for LLM processing
+                            "csv": csv_data,  # CSV data for file download (if available)
+                            "csv_filename": csv_filename  # Filename for CSV (if available)
                         })
 
                         # Emit tool result for visibility
                         if streaming_callback:
                             try:
-                                streaming_callback("tool_result", str(tool_result), {
+                                streaming_callback("tool_result", result_text, {
                                     "tool": tool_name,
-                                    "result": tool_result
+                                    "result": result_text,
+                                    "csv": csv_data,
+                                    "csv_filename": csv_filename
                                 })
                             except Exception:
                                 pass  # Don't fail if callback errors
 
-                        # Add tool result message for next iteration
-                        messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
+                        # Add tool result message for next iteration (use text result for LLM)
+                        messages.append(ToolMessage(content=result_text, tool_call_id=tool_call_id))
                     except Exception as e:
                         # 🔍 TRAP LOGGING: Full stack trace dump
                         print("=" * 80)

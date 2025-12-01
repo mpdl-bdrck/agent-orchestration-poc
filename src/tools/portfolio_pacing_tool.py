@@ -24,6 +24,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import pytz
+import json
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from langchain_core.tools import tool
@@ -215,13 +216,98 @@ def _calculate_pacing_analysis(
         return {'error': str(e)}
 
 
+def _generate_portfolio_csv(
+    portfolio_daily: pd.DataFrame,
+    pacing: Dict[str, Any],
+    campaign_start: str,
+    campaign_end: str,
+    account_id: str
+) -> str:
+    """
+    Generate CSV string from portfolio daily data.
+    
+    Args:
+        portfolio_daily: DataFrame with 'date' and 'spend' columns (and optionally 'impressions')
+        pacing: Pacing analysis dict with expected_daily_rate, budget, etc.
+        campaign_start: Campaign start date (YYYY-MM-DD)
+        campaign_end: Campaign end date (YYYY-MM-DD)
+        account_id: Account ID for filename
+        
+    Returns:
+        CSV string with columns: Date, Spend, Impressions, Budget Target, Daily Variance, Status
+    """
+    try:
+        # Create a copy to avoid modifying original
+        df = portfolio_daily.copy()
+        
+        # Ensure date column exists and is formatted
+        if 'date' not in df.columns:
+            logger.warning("No 'date' column in portfolio_daily DataFrame")
+            return ""
+        
+        # Sort by date descending (most recent first)
+        df = df.sort_values('date', ascending=False).reset_index(drop=True)
+        
+        # Calculate daily budget target
+        expected_daily_rate = pacing.get('expected_daily_rate', 0)
+        
+        # Build CSV rows
+        csv_rows = []
+        
+        # Header
+        headers = ['Date', 'Spend', 'Budget Target', 'Daily Variance', 'Status']
+        if 'impressions' in df.columns:
+            headers.insert(2, 'Impressions')  # Insert after Spend
+        
+        csv_rows.append(','.join(headers))
+        
+        # Data rows
+        for _, row in df.iterrows():
+            date_str = str(row.get('date', ''))
+            spend = float(row.get('spend', 0))
+            impressions = int(row.get('impressions', 0)) if 'impressions' in df.columns else None
+            
+            # Calculate variance
+            daily_variance = spend - expected_daily_rate
+            
+            # Determine status
+            if abs(daily_variance) < expected_daily_rate * 0.02:  # Within 2% of target
+                status = "On Pace"
+            elif daily_variance > 0:
+                status = "Ahead"
+            else:
+                status = "Behind"
+            
+            # Build row
+            row_data = [
+                date_str,
+                f"{spend:.2f}",
+                f"{expected_daily_rate:.2f}",
+                f"{daily_variance:.2f}",
+                status
+            ]
+            
+            # Insert impressions if available
+            if impressions is not None:
+                row_data.insert(2, str(impressions))
+            
+            csv_rows.append(','.join(row_data))
+        
+        return '\n'.join(csv_rows)
+        
+    except Exception as e:
+        logger.error(f"Error generating CSV: {e}", exc_info=True)
+        return ""
+
+
 def _format_portfolio_results(
     result_data: dict,
     campaign_start: str,
     campaign_end: str,
     campaign_budget: float,
-    client_config: Dict[str, Any] = None
-) -> str:
+    client_config: Dict[str, Any] = None,
+    account_id: str = "17"
+) -> Dict[str, Any]:
     """
     Format analysis results with comprehensive pacing analysis for rolling 30-day window.
     """
@@ -232,7 +318,11 @@ def _format_portfolio_results(
         portfolio_daily = rollups.get('portfolio_daily')
         
         if portfolio_daily is None or len(portfolio_daily) == 0:
-            return "❌ No portfolio daily data available"
+            return {
+                "text": "❌ No portfolio daily data available",
+                "csv": None,
+                "filename": None
+            }
         
         # Calculate pacing analysis
         pacing = _calculate_pacing_analysis(
@@ -244,7 +334,11 @@ def _format_portfolio_results(
         )
         
         if pacing.get('error'):
-            return f"❌ Error calculating pacing: {pacing['error']}"
+            return {
+                "text": f"❌ Error calculating pacing: {pacing['error']}",
+                "csv": None,
+                "filename": None
+            }
         
         # Build comprehensive pacing report
         lines = []
@@ -339,11 +433,43 @@ def _format_portfolio_results(
             else:
                 lines.append(f"{date_str} ({tz_display}): ${spend:,.2f}")
         
-        return "\n".join(lines)
+        formatted_text = "\n".join(lines)
+        
+        # Generate CSV
+        csv_data = None
+        csv_filename = None
+        try:
+            csv_data = _generate_portfolio_csv(
+                portfolio_daily=portfolio_daily,
+                pacing=pacing,
+                campaign_start=campaign_start,
+                campaign_end=campaign_end,
+                account_id=account_id
+            )
+            
+            # Only set filename if CSV data was successfully generated
+            if csv_data and csv_data.strip():
+                # Generate filename: portfolio_daily_{account_id}_{start_date}_to_{end_date}.csv
+                csv_filename = f"portfolio_daily_{account_id}_{campaign_start}_to_{campaign_end}.csv"
+            else:
+                csv_data = None  # Ensure None if empty
+        except Exception as e:
+            logger.warning(f"Failed to generate CSV: {e}, continuing with text-only output")
+            csv_data = None
+        
+        return {
+            "text": formatted_text,
+            "csv": csv_data,
+            "filename": csv_filename
+        }
         
     except Exception as e:
         logger.error(f"Error formatting portfolio results: {e}", exc_info=True)
-        return f"❌ Error formatting results: {str(e)}"
+        return {
+            "text": f"❌ Error formatting results: {str(e)}",
+            "csv": None,
+            "filename": None
+        }
 
 
 @tool
@@ -732,15 +858,28 @@ def analyze_portfolio_pacing(
             result['account_id'] = clean_account
             
             # Format results with pacing analysis
-            formatted_output = _format_portfolio_results(
+            formatted_result = _format_portfolio_results(
                 result_data=result,
                 campaign_start=clean_start,
                 campaign_end=clean_end,
                 campaign_budget=float(campaign_budget) if campaign_budget else 233000.0,
-                client_config=client_config
+                client_config=client_config,
+                account_id=clean_account
             )
-            logger.info("✅ Portfolio analysis completed successfully")
-            return formatted_output
+            
+            # Return JSON string if CSV is available, otherwise return text-only (backward compatible)
+            if isinstance(formatted_result, dict) and formatted_result.get('csv'):
+                # Return JSON string with both text and CSV
+                logger.info("✅ Portfolio analysis completed successfully (with CSV)")
+                return json.dumps(formatted_result)
+            elif isinstance(formatted_result, dict):
+                # Return text-only string (backward compatible)
+                logger.info("✅ Portfolio analysis completed successfully (text-only)")
+                return formatted_result.get('text', str(formatted_result))
+            else:
+                # Fallback for old format (shouldn't happen, but safety)
+                logger.info("✅ Portfolio analysis completed successfully")
+                return str(formatted_result)
                 
         except Exception as e:
             logger.error(f"Error running portfolio analysis: {e}", exc_info=True)
