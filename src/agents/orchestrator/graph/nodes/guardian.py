@@ -38,27 +38,8 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
             # The translated instruction may not contain these keywords
             question_for_guardian = user_question if user_question else instruction
             
-            # --- DYNAMIC TOOL BINDING (Tool Holster Pattern) ---
-            # Trust the supervisor's explicit instruction - if it explicitly forbids tools,
-            # holster them. Otherwise, let the agent decide (with tools available).
-            # The supervisor will include directives like "STRICTLY FORBIDDEN from using tools"
-            # or "text only" when tools should not be used.
-            instruction_lower = instruction.lower()
-            explicit_no_tools_directives = [
-                "strictly forbidden from using tools",
-                "do not use tools",
-                "text only",
-                "speak text only",
-                "forbidden from using",
-                "must not use tools"
-            ]
-            should_holster_tools = any(directive in instruction_lower for directive in explicit_no_tools_directives)
-            
-            logger.info(f"Guardian node - Instruction: '{instruction}' | Holster tools: {should_holster_tools}")
-            if should_holster_tools:
-                logger.info(f"✅ Tool Holster ACTIVE - tools will be disabled")
-            else:
-                logger.info(f"⚠️  Tool Holster INACTIVE - tools will be available")
+            # Trust agent reasoning - tools are available, agent decides based on tool descriptions and prompts
+            logger.info(f"Guardian node - Instruction: '{instruction}'")
             
             # Convert state messages to conversation history format
             conversation_history = []
@@ -80,54 +61,37 @@ def create_guardian_node(call_specialist_agent_func, embedding_model, get_agent_
             
             # Set streaming callback on Guardian agent so it can emit responses
             # Create a wrapper callback that ensures agent name is included
+            # Also check session for Chainlit callback (for tool usage messages)
             def guardian_streaming_wrapper(event_type, message, data=None):
                 if data is None:
                     data = {}
                 data["agent"] = "guardian"
+                # Use graph callback if available
                 if streaming_callback:
                     streaming_callback(event_type, message, data)
+                # Also check Chainlit session callback (for tool calls from agent_loop)
+                try:
+                    import chainlit as cl
+                    chainlit_callback = cl.user_session.get("streaming_callback")
+                    if chainlit_callback:
+                        chainlit_callback(event_type, message, data)
+                except Exception:
+                    pass  # Not in Chainlit context or callback not set
             
             # Get agent instance and set streaming callback
             agent = get_agent_func("guardian")
             if agent and hasattr(agent, 'set_streaming_callback'):
                 agent.set_streaming_callback(guardian_streaming_wrapper)
             
-            # --- TOOL HOLSTER LOGIC ---
-            # If supervisor explicitly forbade tools, run WITHOUT tools
-            # Otherwise, run WITH tools (normal path - agent decides)
-            if should_holster_tools:
-                logger.info("Guardian: Running WITHOUT tools (Tool Holster - supervisor explicitly forbade tools)")
-                # Run without tools using direct agent method
-                if agent and hasattr(agent, 'analyze_without_tools'):
-                    # For introductions, we don't need knowledge base context
-                    result = agent.analyze_without_tools(
-                        question=question_for_guardian,
-                        context="No specific context needed for introduction.",
-                        supervisor_instruction=instruction
-                    )
-                    response = result.get('answer', '') if isinstance(result, dict) else str(result)
-                else:
-                    # Fallback: call via standard path but force use_tools=False
-                    response = call_specialist_agent_func(
-                        agent_name="guardian",
-                        question=question_for_guardian,
-                        context_id=context_id,
-                        embedding_model=embedding_model,
-                        agent_registry_get_agent=get_agent_func,
-                        conversation_history=conversation_history if conversation_history else None,
-                        supervisor_instruction=instruction
-                    )
-            else:
-                logger.info("Guardian: Running WITH tools (data request detected)")
-                # Normal path: run WITH tools
+            # Single execution path - agent decides tool usage based on prompts and tool descriptions
             response = call_specialist_agent_func(
                 agent_name="guardian",
-                question=question_for_guardian,  # Pass original question for context
+                question=question_for_guardian,
                 context_id=context_id,
                 embedding_model=embedding_model,
                 agent_registry_get_agent=get_agent_func,
                 conversation_history=conversation_history if conversation_history else None,
-                supervisor_instruction=instruction  # Pass supervisor instruction from state
+                supervisor_instruction=instruction
             )
             
             if not response:

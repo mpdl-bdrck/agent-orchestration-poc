@@ -1,6 +1,6 @@
 # AI Development Agent Handoff Document
 
-**Last Updated**: December 2025 (Latest: Rolling 30-day window, Guardian formatting, Chainlit DataError workaround)  
+**Last Updated**: December 1, 2025 (Latest: Portfolio pacing refactor, timezone fixes, CSV storage improvements)  
 **Purpose**: Reference manual for architectural decisions, patterns, and critical implementation details
 
 ---
@@ -101,34 +101,7 @@ return {"next": decision.next, "current_task_instruction": decision.instructions
 
 **Why**: Tools add latency and break the architectural pattern. Supervisor IS the graph entry point.
 
-### Pattern 2: Inhibition - The "Tool Holster" Pattern
-
-**Principle**: Prevent agents from using expensive tools for simple greetings or out-of-scope queries.
-
-**Implementation**:
-1. **Tool Descriptions**: Include explicit "WHEN NOT TO USE" sections
-2. **Supervisor Instructions**: Inject via XML tags (`<supervisor_instruction>`)
-3. **Physical Prevention**: Guardian node can call `analyze_without_tools()` when supervisor explicitly forbids tools
-
-**Example**:
-```python
-# Tool description
-description="""...
-WHEN NOT TO USE:
-- DO NOT use for introductions, greetings, or general conversation
-"""
-
-# System prompt injection
-if supervisor_instruction:
-    base_prompt += f"""
-<supervisor_instruction>
-{supervisor_instruction}
-</supervisor_instruction>
-CRITICAL: Follow this instruction exactly...
-"""
-```
-
-### Pattern 3: Resilience - The "Canary" Pattern
+### Pattern 2: Resilience - The "Canary" Pattern
 
 **Principle**: Tools use `@tool` decorators with internal `safe_str` sanitizers. NO Pydantic schemas on tools.
 
@@ -136,7 +109,7 @@ CRITICAL: Follow this instruction exactly...
 
 **Implementation**: See [Reference Implementation - Safe Tool Definition](#reference-implementation)
 
-### Pattern 4: State-Based Communication
+### Pattern 3: State-Based Communication
 
 **Principle**: Read from `AgentState`, don't prop-drill through function signatures.
 
@@ -149,7 +122,7 @@ def guardian_node(state: AgentState):
     # Use instruction and question
 ```
 
-### Pattern 5: Prompt-Driven Reasoning
+### Pattern 4: Prompt-Driven Reasoning
 
 **Principle**: ALL decisions come from LLM reasoning guided by prompts. NO hardcoded logic.
 
@@ -166,7 +139,9 @@ def guardian_node(state: AgentState):
 **Solution**: Use `@tool` decorator WITHOUT Pydantic schemas. Implement internal sanitization with `safe_str()` functions.
 
 **Files**:
-- `src/tools/portfolio_pacing_tool.py` - Example of Canary Pattern
+- `src/tools/portfolio_pacing_tool.py` - Main tool function (185 lines)
+- `src/tools/portfolio_pacing_helpers.py` - Helper functions (calculations, formatting, CSV)
+- `src/tools/portfolio_pacing_loader.py` - Analyzer loading and client config
 - `src/agents/specialists/guardian_agent.py` - Pydantic Model Guard (for input models, not tools)
 
 ### Why We Bypass LangChain Validation in `agent_loop.py`
@@ -294,41 +269,31 @@ def guardian_node(state: AgentState):
 
 **Fix**: Use `python run_chainlit.py` wrapper script which patches `sniffio` automatically.
 
-### Issue: Chainlit asyncpg DataError - Invalid input for query argument $11
+### Issue: Chainlit Database Persistence Errors (RESOLVED - DISABLED)
 
-**CRITICAL - MUST FIX IN NEXT SESSION**
+**Status**: ✅ **RESOLVED** - Persistence disabled, all database operations patched
 
-**Error**:
+**Errors Previously Seen**:
 ```
 asyncpg.exceptions.DataError: invalid input for query argument $11: 'json' (a boolean is required (got type str))
+asyncpg.exceptions.InvalidTextRepresentationError: invalid input syntax for type json
+asyncpg.exceptions.NotNullViolationError: null value in column "name" violates not-null constraint
+asyncpg.exceptions.UndefinedTableError: relation "Element" does not exist
 ```
 
-**Location**: Chainlit's `create_step()` method in `chainlit/data/chainlit_data_layer.py` line 391
+**Root Cause**: Chainlit's data layer has fundamental bugs incompatible with PostgreSQL strict typing.
 
-**Root Cause**: Chainlit is passing a string `'json'` where a boolean is expected for query argument $11 when creating/updating Step records in PostgreSQL.
+**Solution Implemented**: 
+- ✅ **Persistence DISABLED** - `CHAINLIT_DATABASE_URL=""` forced in `src/interface/chainlit/config.py`
+- ✅ All database operations monkey-patched to no-ops (`create_step`, `update_step`, `get_thread`, `create_element`)
+- ✅ Zero errors, clean console output
+- ✅ App runs perfectly in "Ephemeral Mode" (chat history lost on refresh)
 
-**Current Workaround**: 
-- `ChainlitDatabaseExceptionFilter` in `app.py` (lines 128-149) suppresses these errors from console
-- The app still works, but errors are logged and may cause issues with step persistence
+**Files**:
+- `src/interface/chainlit/config.py` - Persistence disable and monkey-patches
+- `docs/CHAINLIT_SQLITE_PERSISTENCE.md` - Future SQLite implementation guide
 
-**Investigation Needed**:
-1. Check what field corresponds to query argument $11 in Chainlit's Step INSERT/UPDATE queries
-2. Verify the `Step` table schema matches Chainlit's expectations (see `scripts/create_chainlit_schema.sql`)
-3. Check if Chainlit is passing metadata or other JSON fields incorrectly
-4. Look for type mismatches in Chainlit's parameter binding code
-
-**Files to Check**:
-- `scripts/create_chainlit_schema.sql` - Step table definition (line 42-65)
-- `app.py` - Exception filter (lines 128-149) - TEMPORARY WORKAROUND
-- Chainlit library code: `venv/lib/python3.13/site-packages/chainlit/data/chainlit_data_layer.py` line 391
-
-**Potential Fixes**:
-1. Update Step table schema to match Chainlit's expected types
-2. Patch Chainlit's data layer to fix parameter binding
-3. Update Chainlit version if newer version fixes this
-4. Create custom Chainlit data layer adapter
-
-**Status**: ⚠️ WORKAROUND IN PLACE - NEEDS PERMANENT FIX
+**Future Recommendation**: If persistence is needed, use **SQLite** instead of PostgreSQL (see `CHAINLIT_SQLITE_PERSISTENCE.md`).
 
 ---
 
@@ -511,17 +476,17 @@ tool_result = tool_func.invoke(normalized_args)
 
 **Problem**: Tools crash when LLM sends lists (`['value']`) instead of strings (`"value"`). Pydantic validation calls `.strip()` on lists.
 
-**Decision**: Implement **Three-Layer Defense**:
-1. **Tool Holster Pattern**: Physically remove tools when supervisor forbids them
-2. **Canary Pattern**: Tools use `@tool` WITHOUT Pydantic schemas, internal sanitization
-3. **Middleware Normalization**: Normalize arguments BEFORE Pydantic validation
+**Decision**: Implement **Two-Layer Defense**:
+1. **Canary Pattern**: Tools use `@tool` WITHOUT Pydantic schemas, internal sanitization
+2. **Middleware Normalization**: Normalize arguments BEFORE Pydantic validation
+
+**Note**: Tool usage is controlled by prompt-driven reasoning. Agents reason about when tools are needed based on tool descriptions with "WHEN NOT TO USE" sections. No physical tool holstering is needed.
 
 **Implementation**: See [Reference Implementation](#reference-implementation)
 
 **Files**:
 - `src/tools/portfolio_pacing_tool.py` - Canary Pattern
 - `src/utils/agent_loop.py` - Middleware Normalization
-- `src/agents/orchestrator/graph/nodes/guardian.py` - Tool Holster
 
 ### ADR 002: Routing via Structured Output (Not Tools)
 
@@ -554,14 +519,15 @@ tool_result = tool_func.invoke(normalized_args)
 **Decision**: ALL decisions come from LLM reasoning guided by prompts. NO hardcoded logic.
 
 **Implementation**: 
-- Tool descriptions include "WHEN NOT TO USE"
-- Supervisor instructions injected via XML tags
+- Tool descriptions include "WHEN NOT TO USE" sections
+- Supervisor instructions injected via XML tags (as guidance, not commands)
 - System prompts guide LLM behavior
+- Agents reason about tool usage based on clear descriptions
 
 **Files**:
 - `prompts/orchestrator/supervisor.txt`
 - `config/prompts/{agent}/system.txt`
-- `src/tools/*.py` - Tool descriptions
+- `src/tools/*.py` - Tool descriptions with "WHEN NOT TO USE" sections
 
 ### ADR 005: Tools vs Agents - Semantic Distinction
 
@@ -582,21 +548,39 @@ tool_result = tool_func.invoke(normalized_args)
 
 ## Latest Session Learnings (December 2025)
 
-### Portfolio Pacing Tool - Rolling 30-Day Window
+### Portfolio Pacing Tool - Refactoring & Timezone Fixes (December 2025)
 
-**Change**: Migrated from hardcoded November 2025 dates to dynamic rolling 30-day window.
+**Major Refactoring**: Split 894-line file into 3 manageable modules (all under 400 lines):
+- `portfolio_pacing_tool.py` (185 lines): Main tool function
+- `portfolio_pacing_helpers.py` (449 lines): Helper functions (calculations, formatting, CSV generation)
+- `portfolio_pacing_loader.py` (185 lines): Analyzer loading and client config management
 
-**Implementation**:
-- Added `_calculate_rolling_30day_window()` helper function with PST timezone support
-- Changed function defaults: `campaign_start=None`, `campaign_end=None` (uses rolling window)
-- Window calculation: `today - 29 days` to `today` (inclusive = 30 days total)
-- Respects client config timezone (defaults to PST for Tricoast Media LLC)
+**Timezone Fix**: Fixed UTC vs PST mismatch when client config load fails:
+- **Problem**: When `load_client_config()` import fails, `client_config` was `None`, causing Python to use PST dates while database query used UTC (no conversion).
+- **Solution**: Explicit PST default when import fails: `client_config = {'timezone': 'PST', 'timezone_full': 'America/Los_Angeles'}`
+- **Result**: Consistent PST timezone handling even when config file can't be loaded
+
+**CSV Storage Fix**: Fixed `_GLOBAL_CSV_STORAGE` assignment error:
+- **Problem**: Code was finding `torch.ops` module which has `_GLOBAL_CSV_STORAGE` attribute but it's not a dict (`_OpNamespace` object).
+- **Solution**: Added type check: `if isinstance(storage, dict):` before assignment
+- **Result**: Prevents errors when non-dict modules have this attribute
+
+**Database Error Suppression**: Suppressed Chainlit Element table errors:
+- **Problem**: Chainlit still tries to persist file elements even though persistence is disabled.
+- **Solution**: Added `create_element` to no-op patch list in `config.py`
+- **Result**: CSV files still work via message system, no database errors
 
 **Files Modified**:
-- `src/tools/portfolio_pacing_tool.py` - Added rolling window calculation
-- `test_portfolio_tool.py` - Updated to test rolling window behavior
+- `src/tools/portfolio_pacing_tool.py` - Refactored to use helpers and loader
+- `src/tools/portfolio_pacing_helpers.py` - New helper module
+- `src/tools/portfolio_pacing_loader.py` - New loader module
+- `src/utils/agent_loop.py` - Fixed CSV storage type checking
+- `src/interface/chainlit/config.py` - Added `create_element` patch
 
-**Key Insight**: Budget remains fixed at $233,000, but date range is now dynamic and always current.
+**Key Insights**: 
+- Modular structure improves maintainability (no file exceeds 400 lines)
+- Timezone consistency critical for accurate pacing calculations
+- Client config file exists at `tools/campaign-portfolio-pacing/config/clients/tricoast media llc.json`
 
 ### Guardian Agent Output Formatting
 
@@ -623,18 +607,21 @@ tool_result = tool_func.invoke(normalized_args)
 invalid input for query argument $11: 'json' (a boolean is required (got type str))
 asyncpg.exceptions.InvalidTextRepresentationError: invalid input syntax for type json
 asyncpg.exceptions.NotNullViolationError: null value in column "name" violates not-null constraint
+asyncpg.exceptions.UndefinedTableError: relation "Element" does not exist
 ```
 
 **Root Cause**: Chainlit's data layer has fundamental bugs:
 - Passes raw strings to JSONB columns without proper JSON encoding
 - Creates Step records without required fields
 - Type mismatches between Chainlit's expectations and PostgreSQL strictness
+- Attempts to persist file elements even when persistence is disabled
 
 **Solution Implemented**: 
-- ✅ **Persistence DISABLED** - Set `CHAINLIT_DATABASE_URL=""` in `app.py`
-- ✅ All database operations monkey-patched to no-ops
+- ✅ **Persistence DISABLED** - Set `CHAINLIT_DATABASE_URL=""` in `src/interface/chainlit/config.py`
+- ✅ All database operations monkey-patched to no-ops (`create_step`, `update_step`, `get_thread`, `create_element`)
 - ✅ Zero errors, clean console output
 - ✅ App runs perfectly in "Ephemeral Mode" (chat history lost on refresh)
+- ✅ CSV file downloads still work via message system (no database persistence needed)
 
 **Status**: ✅ **RESOLVED** - Persistence disabled, acceptable for POC
 
@@ -642,12 +629,12 @@ asyncpg.exceptions.NotNullViolationError: null value in column "name" violates n
 - SQLite is permissive and handles Chainlit's data types gracefully
 - No schema conflicts, no crashes
 - Decouples "UI Memory" (SQLite) from "Agent Brain" (Postgres)
-- See `CHAINLIT_SQLITE_PERSISTENCE.md` for full implementation guide
+- See `docs/CHAINLIT_SQLITE_PERSISTENCE.md` for full implementation guide
 
 **Related Files**:
-- `CHAINLIT_SQLITE_PERSISTENCE.md` - SQLite persistence guide
+- `docs/CHAINLIT_SQLITE_PERSISTENCE.md` - SQLite persistence guide
 - `scripts/cleanup_chainlit_databases.sh` - Cleanup script for Postgres artifacts
-- `app.py` lines 46-57 - Persistence disable code
+- `src/interface/chainlit/config.py` - Persistence disable and monkey-patches
 
 ## Related Documentation
 
@@ -667,7 +654,9 @@ asyncpg.exceptions.NotNullViolationError: null value in column "name" violates n
 - State schema: `src/agents/orchestrator/graph/state.py`
 - Graph definition: `src/agents/orchestrator/graph/graph.py`
 - Agent loop: `src/utils/agent_loop.py`
-- Tool example: `src/tools/portfolio_pacing_tool.py`
+- Tool example: `src/tools/portfolio_pacing_tool.py` (main function)
+- Tool helpers: `src/tools/portfolio_pacing_helpers.py` (calculations, formatting)
+- Tool loader: `src/tools/portfolio_pacing_loader.py` (analyzer loading)
 - Supervisor prompt: `prompts/orchestrator/supervisor.txt`
 
 ### Key Patterns

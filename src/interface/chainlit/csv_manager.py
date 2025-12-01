@@ -209,7 +209,8 @@ def retrieve_csv_from_module_storage(node_name: str = None) -> tuple[str | None,
                         execute_agent_loop = candidate_func
                         logger.info(f"✅ Module imported and execute_agent_loop found!")
             except ImportError as e_import:
-                logger.warning(f"⚠️ Standard import failed ({e_import})")
+                # This is expected/harmless - Method 1 (searching sys.modules) usually finds it first
+                logger.debug(f"Standard import failed (expected if module not yet loaded): {e_import}")
             except Exception as e_import:
                 logger.error(f"❌ Failed to import module: {e_import}", exc_info=True)
         

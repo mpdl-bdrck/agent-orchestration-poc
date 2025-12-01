@@ -273,6 +273,18 @@ def execute_agent_loop(
                                 csv_data = parsed.get("csv")
                                 csv_filename = parsed.get("filename")
                                 result_text = parsed.get("text", result_text)  # Use text from JSON
+                                
+                                # Include advertiser_name and account_name in the result so LLM can use them
+                                advertiser_name = parsed.get("advertiser_name")
+                                account_name = parsed.get("account_name")
+                                if advertiser_name or account_name:
+                                    metadata_section = "\n\n---\n"
+                                    if advertiser_name:
+                                        metadata_section += f"Advertiser: {advertiser_name}\n"
+                                    if account_name:
+                                        metadata_section += f"Account: {account_name}\n"
+                                    result_text = result_text + metadata_section
+                                
                                 logger.info(f"[{job_name}] ✅ Parsed JSON result with CSV data for {tool_name}: filename={csv_filename}, csv_len={len(csv_data) if csv_data else 0}")
                                 
                                 # CRITICAL: Store CSV in multiple locations for Chainlit access

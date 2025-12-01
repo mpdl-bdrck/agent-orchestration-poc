@@ -67,9 +67,7 @@ class GuardianAgent(BaseSpecialistAgent):
 </supervisor_instruction>
 
 CRITICAL: The text above is a direct order from the Orchestrator Supervisor. 
-Follow the Supervisor's instruction exactly. If the instruction implies a greeting, introduction, 
-or general question that doesn't require portfolio data, reply with text only. Do NOT call tools 
-unless portfolio data is explicitly needed for the response.
+Follow the Supervisor's instruction exactly.
 """
         
         # Build toolkit reference from available tools
@@ -187,46 +185,6 @@ unless portfolio data is explicitly needed for the response.
             return []
 
 
-    def analyze_without_tools(self, question: str, context: str, supervisor_instruction: str = None) -> Dict[str, Any]:
-        """
-        Analyze WITHOUT tools - used for introductions/greetings.
-        
-        This method runs the LLM without binding tools, preventing the agent
-        from calling tools even if it wants to. This implements the "Tool Holster" pattern.
-        
-        Args:
-            question: The question to analyze
-            context: Relevant context from knowledge base
-            supervisor_instruction: Optional instruction from supervisor
-            
-        Returns:
-            Analysis result dictionary
-        """
-        from langchain_core.messages import SystemMessage, HumanMessage
-        
-        # Build system prompt with supervisor instruction
-        system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
-        user_prompt = self._build_user_prompt(question, context)
-        
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ]
-        
-        # Call LLM WITHOUT binding tools
-        response = self.llm.invoke(messages)
-        answer = response.content if hasattr(response, 'content') else str(response)
-        
-        # Emit streaming event if callback is set
-        if self.streaming_callback and answer:
-            self.streaming_callback("agent_response", answer, {"agent": "guardian"})
-        
-        return {
-            'answer': answer,
-            'specialist_type': self.specialist_type,
-            'question': question
-        }
-
     @trace_agent("guardian")
     def analyze(self, question: str, context: str, supervisor_instruction: str = None, use_tools: bool = True) -> Dict[str, Any]:
         """
@@ -261,7 +219,7 @@ When calling analyze_portfolio_pacing, use these defaults unless the user specif
         """.strip()
         
         # If tools are available AND use_tools is True, use agent loop with tool calling
-        # If use_tools is False, run without tools (Tool Holster pattern)
+        # If use_tools is False, run without tools (fallback to standard analysis)
         if self.tools and use_tools:
             try:
                 from langchain_core.messages import SystemMessage, HumanMessage

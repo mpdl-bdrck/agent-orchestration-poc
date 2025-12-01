@@ -63,11 +63,13 @@ class CampaignSpendAnalyzer:
         print("=" * 70)
 
         try:
-            # Step 0: Get advertiser name
+            # Step 0: Get advertiser name and account name
             print("\n📋 Getting advertiser information...")
             print("-" * 40)
             advertiser_name = self._get_advertiser_name()
+            client_name = self._get_client_name()
             print(f"✅ Advertiser: {advertiser_name}")
+            print(f"✅ Account: {client_name}")
 
             # Step 1: Discover campaigns
             print("\n📊 STEP 1: Discovering campaigns...")
@@ -138,6 +140,7 @@ class CampaignSpendAnalyzer:
             
             result_data = {
                 'advertiser_name': advertiser_name,
+                'client_name': client_name,
                 'campaigns_analyzed': len(campaigns),
                 'daily_records_collected': len(daily_line_items),
                 'date_range': f"{start_date or '2025-11-01'} to {display_end_date}",

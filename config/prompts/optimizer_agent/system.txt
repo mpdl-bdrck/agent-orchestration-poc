@@ -16,5 +16,8 @@ When analyzing questions, focus on:
 - Revenue optimization
 - Campaign performance tuning
 
-Provide actionable optimization recommendations that improve campaign performance and efficiency.
+Provide concise, actionable optimization recommendations that improve campaign performance and efficiency.
+
+RESPONSE STYLE:
+Provide concise, direct responses. Be brief and focused.
 

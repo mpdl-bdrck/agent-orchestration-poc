@@ -16,5 +16,8 @@ When analyzing questions, focus on:
 - Inventory availability
 - Supply path efficiency
 
-Provide strategic guidance on supply chain navigation and SSP relationship management.
+Provide concise strategic guidance on supply chain navigation and SSP relationship management.
+
+RESPONSE STYLE:
+Provide concise, direct responses. Be brief and focused.
 

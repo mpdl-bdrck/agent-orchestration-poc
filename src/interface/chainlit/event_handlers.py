@@ -35,26 +35,10 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
     async def _ensure_message_exists():
         """Create message bubble if it doesn't exist (for direct LLM calls that skip on_chat_model_start)."""
         if node_name not in active_messages:
-            msg = cl.Message(
-                content="",
-                author=agent_display_name
-            )
-            await msg.send()
-            active_messages[node_name] = msg
-    
-    # 1. DETECT START OF SPEECH
-    if event_type == "on_chat_model_start":
-        # Skip Orchestrator - it will be created lazily on first token to prevent empty bubbles
-        if node_name == SUPERVISOR_NODE:
-            return  # Don't create empty bubble for Orchestrator when it routes
-        
-        # Only create a new bubble if one isn't already open for this node
-        if node_name not in active_messages:
             # Show "Calling [Agent] Agent..." status for sub-agents
             if node_name in SUB_AGENTS:
-                # Send a brief status message before the agent responds
                 status_msg = cl.Message(
-                    content=f"📞 Calling {emoji} {agent_display_name} Agent...",
+                    content=f"*Calling {agent_display_name} Agent...*",
                     author="System"
                 )
                 await status_msg.send()
@@ -65,6 +49,38 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
             )
             await msg.send()
             active_messages[node_name] = msg
+            
+            # Check for queued tool calls and display them immediately
+            tool_calls_queue = cl.user_session.get("tool_calls_queue", [])
+            if tool_calls_queue:
+                displayed_tools = []
+                for tool_call in tool_calls_queue:
+                    tool_agent = tool_call.get("agent", "unknown")
+                    if tool_agent == node_name or tool_agent == "unknown":
+                        tool_name = tool_call.get("tool_name", "unknown")
+                        if tool_name == "analyze_portfolio_pacing":
+                            await msg.stream_token(f"\n\n🛠️ *Running portfolio analysis...*\n\n")
+                        else:
+                            await msg.stream_token(f"\n\n🛠️ *Running tool: `{tool_name}`...*\n\n")
+                        displayed_tools.append(tool_call)
+                # Remove displayed tools from queue
+                remaining_tools = [tc for tc in tool_calls_queue if tc not in displayed_tools]
+                cl.user_session.set("tool_calls_queue", remaining_tools)
+    
+    # 0. DETECT CHAIN START (create message bubble early for tool calls)
+    if event_type == "on_chain_start" and node_name in SUB_AGENTS:
+        # Create message bubble early so tool calls can be displayed
+        if node_name not in active_messages:
+            await _ensure_message_exists()
+    
+    # 1. DETECT START OF SPEECH
+    if event_type == "on_chat_model_start":
+        # Skip Orchestrator - it will be created lazily on first token to prevent empty bubbles
+        if node_name == SUPERVISOR_NODE:
+            return  # Don't create empty bubble for Orchestrator when it routes
+        
+        # Ensure message exists (might have been created on on_chain_start)
+        await _ensure_message_exists()
     
     # 2. STREAM TOKENS
     elif event_type == "on_chat_model_stream":
@@ -187,7 +203,7 @@ async def _handle_semantic_search_event(event_type, event, orchestrator_msg):
     if event_type == "on_chain_start":
         # Create standalone status message (like "Calling X Agent...")
         status_msg = cl.Message(
-            content=f"🔍 Searching Knowledge Base...",
+            content=f"*Searching Knowledge Base...*",
             author="System"
         )
         await status_msg.send()

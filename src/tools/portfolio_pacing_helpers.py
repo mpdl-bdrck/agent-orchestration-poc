@@ -291,6 +291,10 @@ def format_portfolio_results(
     Format analysis results with comprehensive pacing analysis for rolling 30-day window.
     """
     try:
+        # Extract advertiser and account names
+        advertiser_name = result_data.get('advertiser_name', 'Unknown Advertiser')
+        account_name = result_data.get('client_name', f'Account {account_id}')
+        
         rollups = result_data.get('rollups', {})
         
         # Get portfolio_daily rollup
@@ -436,7 +440,9 @@ def format_portfolio_results(
         return {
             "text": formatted_text,
             "csv": csv_data,
-            "filename": csv_filename
+            "filename": csv_filename,
+            "advertiser_name": advertiser_name,
+            "account_name": account_name
         }
         
     except Exception as e:
@@ -444,6 +450,8 @@ def format_portfolio_results(
         return {
             "text": f"❌ Error formatting results: {str(e)}",
             "csv": None,
-            "filename": None
+            "filename": None,
+            "advertiser_name": result_data.get('advertiser_name', 'Unknown Advertiser'),
+            "account_name": result_data.get('client_name', f'Account {account_id}')
         }
 
