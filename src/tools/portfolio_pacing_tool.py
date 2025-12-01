@@ -46,6 +46,34 @@ def _safe_str(val) -> str:
     return str(val).strip()
 
 
+def _calculate_rolling_30day_window(client_config: Dict[str, Any] = None) -> tuple[str, str]:
+    """
+    Calculate rolling 30-day window dates in PST timezone.
+    
+    Returns:
+        (start_date, end_date) as YYYY-MM-DD strings
+        Window is inclusive: today - 29 days to today = 30 days total
+    """
+    # Get timezone from client config (default to PST for Tricoast)
+    if client_config:
+        tz_str = client_config.get('timezone_full') or client_config.get('timezone', 'America/Los_Angeles')
+        tz_map = {
+            'PST': 'America/Los_Angeles',
+            'PDT': 'America/Los_Angeles',
+            'EST': 'America/New_York',
+            'EDT': 'America/New_York',
+        }
+        tz_str = tz_map.get(tz_str.upper(), tz_str)
+    else:
+        tz_str = 'America/Los_Angeles'
+    
+    pst_tz = pytz.timezone(tz_str)
+    today_pst = datetime.now(pst_tz).date()
+    start_date_pst = today_pst - timedelta(days=29)  # 30 days inclusive (today + 29 days back)
+    
+    return start_date_pst.strftime('%Y-%m-%d'), today_pst.strftime('%Y-%m-%d')
+
+
 def _calculate_pacing_analysis(
     portfolio_daily: pd.DataFrame,
     campaign_start: str,
@@ -195,7 +223,7 @@ def _format_portfolio_results(
     client_config: Dict[str, Any] = None
 ) -> str:
     """
-    Format analysis results with comprehensive pacing analysis for November campaign.
+    Format analysis results with comprehensive pacing analysis for rolling 30-day window.
     """
     try:
         rollups = result_data.get('rollups', {})
@@ -221,9 +249,17 @@ def _format_portfolio_results(
         # Build comprehensive pacing report
         lines = []
         
-        # Header
-        month_name = datetime.strptime(campaign_start, '%Y-%m-%d').strftime('%B')
-        lines.append(f"📊 {month_name.upper()} PORTFOLIO PACING ANALYSIS")
+        # Header - detect if this is a rolling 30-day window
+        start_date_obj = datetime.strptime(campaign_start, '%Y-%m-%d').date()
+        end_date_obj = datetime.strptime(campaign_end, '%Y-%m-%d').date()
+        days_in_range = (end_date_obj - start_date_obj).days + 1
+        
+        if days_in_range == 30:
+            lines.append(f"📊 30-DAY ROLLING WINDOW PORTFOLIO PACING ANALYSIS")
+        else:
+            # Fallback for custom date ranges
+            month_name = datetime.strptime(campaign_start, '%Y-%m-%d').strftime('%B')
+            lines.append(f"📊 {month_name.upper()} PORTFOLIO PACING ANALYSIS")
         lines.append("═" * 60)
         lines.append("")
         
@@ -310,8 +346,8 @@ def _format_portfolio_results(
 def analyze_portfolio_pacing(
     account_id: str = "17",
     advertiser_filter: Optional[str] = None,
-    campaign_start: Optional[str] = "2025-11-01",
-    campaign_end: Optional[str] = "2025-11-30",
+    campaign_start: Optional[str] = None,  # None = use rolling 30-day window
+    campaign_end: Optional[str] = None,    # None = use rolling 30-day window
     campaign_budget: Optional[float] = 233000.0,
     job_name: Optional[str] = None
 ) -> str:
@@ -331,8 +367,8 @@ def analyze_portfolio_pacing(
     Default values:
     - account_id: "17" (Tricoast Media LLC)
     - advertiser_filter: None (all advertisers) or "Lilly" if user mentions Eli Lilly
-    - campaign_start: "2025-11-01" (November 1, 2025)
-    - campaign_end: "2025-11-30" (November 30, 2025)
+    - campaign_start: None (uses rolling 30-day window: today - 29 days to today, PST)
+    - campaign_end: None (uses rolling 30-day window: today, PST)
     - campaign_budget: 233000.0 ($233,000)
     
     Always use account_id="17" unless user specifies a different account.
@@ -341,8 +377,8 @@ def analyze_portfolio_pacing(
     Parameters:
     - account_id: Account ID to analyze (default: "17")
     - advertiser_filter: Filter campaigns by advertiser name (default: None for all)
-    - campaign_start: Campaign start date for pacing (YYYY-MM-DD, default: "2025-11-01")
-    - campaign_end: Campaign end date for pacing (YYYY-MM-DD, default: "2025-11-30")
+    - campaign_start: Campaign start date for pacing (YYYY-MM-DD, default: None = rolling 30-day window)
+    - campaign_end: Campaign end date for pacing (YYYY-MM-DD, default: None = rolling 30-day window)
     - campaign_budget: Total campaign budget for pacing analysis (default: 233000.0)
     - job_name: Job identifier for tracking (optional)
     
@@ -356,10 +392,51 @@ def analyze_portfolio_pacing(
         # Clean inputs (handle simple lists from LLM)
         clean_account = _safe_str(account_id) or "17"
         clean_filter = _safe_str(advertiser_filter) if advertiser_filter else None
-        clean_start = _safe_str(campaign_start) if campaign_start else "2025-11-01"
-        clean_end = _safe_str(campaign_end) if campaign_end else "2025-11-30"
         
-        logger.info(f"Portfolio Pacing Tool executing: Account={clean_account}, Filter={clean_filter}, Date Range={clean_start} to {clean_end}, Budget=$233,000")
+        # Load client config early to calculate rolling window dates with correct timezone
+        client_config = None
+        try:
+            # Import load_client_config from the tool's utils
+            # We need to be in the tool directory context for imports
+            original_cwd = os.getcwd()
+            original_path = sys.path[:]
+            try:
+                # Get tool_dir
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                tool_dir = os.path.join(project_root, "tools", "campaign-portfolio-pacing")
+                
+                os.chdir(tool_dir)
+                if tool_dir not in sys.path:
+                    sys.path.insert(0, tool_dir)
+                
+                from src.utils.config import load_client_config
+                
+                # For account_id=17, load Tricoast Media LLC config
+                if clean_account == "17":
+                    client_name = "Tricoast Media LLC"
+                    try:
+                        client_config = load_client_config(client_name)
+                        logger.info(f"✅ Loaded client config for {client_name}: timezone={client_config.get('timezone')} ({client_config.get('timezone_full', '')})")
+                    except FileNotFoundError:
+                        logger.warning(f"Client config not found for {client_name}, using PST timezone")
+                    except Exception as e:
+                        logger.warning(f"Could not load client config: {e}, using PST timezone")
+            finally:
+                os.chdir(original_cwd)
+                sys.path[:] = original_path
+        except Exception as e:
+            logger.warning(f"Could not import load_client_config: {e}, using PST timezone")
+        
+        # Calculate dates: use rolling 30-day window if not provided
+        if campaign_start is None or campaign_end is None:
+            clean_start, clean_end = _calculate_rolling_30day_window(client_config)
+            logger.info(f"Using rolling 30-day window: {clean_start} to {clean_end}")
+        else:
+            clean_start = _safe_str(campaign_start)
+            clean_end = _safe_str(campaign_end)
+        
+        budget_value = float(campaign_budget) if campaign_budget else 233000.0
+        logger.info(f"Portfolio Pacing Tool executing: Account={clean_account}, Filter={clean_filter}, Date Range={clean_start} to {clean_end}, Budget=${budget_value:,.0f}")
         
         # Lazy load CampaignSpendAnalyzer if not already loaded
         # This ensures path setup happens at call time, not module import time
@@ -492,39 +569,8 @@ def analyze_portfolio_pacing(
         try:
             logger.info("Running full portfolio analysis using CampaignSpendAnalyzer")
             
-            # Load client config for PST timezone handling (for account_id=17: Tricoast Media LLC)
-            client_config = None
-            try:
-                # Import load_client_config from the tool's utils
-                # We need to be in the tool directory context for imports
-                original_cwd = os.getcwd()
-                original_path = sys.path[:]
-                try:
-                    # Get tool_dir again (already set up earlier)
-                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    tool_dir = os.path.join(project_root, "tools", "campaign-portfolio-pacing")
-                    
-                    os.chdir(tool_dir)
-                    if tool_dir not in sys.path:
-                        sys.path.insert(0, tool_dir)
-                    
-                    from src.utils.config import load_client_config
-                    
-                    # For account_id=17, load Tricoast Media LLC config
-                    if clean_account == "17":
-                        client_name = "Tricoast Media LLC"
-                        try:
-                            client_config = load_client_config(client_name)
-                            logger.info(f"✅ Loaded client config for {client_name}: timezone={client_config.get('timezone')} ({client_config.get('timezone_full', '')})")
-                        except FileNotFoundError:
-                            logger.warning(f"Client config not found for {client_name}, using UTC timezone")
-                        except Exception as e:
-                            logger.warning(f"Could not load client config: {e}, using UTC timezone")
-                finally:
-                    os.chdir(original_cwd)
-                    sys.path[:] = original_path
-            except Exception as e:
-                logger.warning(f"Could not import load_client_config: {e}, using UTC timezone")
+            # Client config already loaded earlier (needed for rolling window date calculation)
+            # Reuse it here for timezone handling in analysis
             
             # Suppress stdout/stderr to hide internal print statements from CampaignSpendAnalyzer
             # and DatabaseConnector. The Guardian agent will format and display the results,
