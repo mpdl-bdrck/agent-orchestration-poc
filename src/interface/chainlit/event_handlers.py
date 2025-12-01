@@ -153,12 +153,14 @@ async def _handle_agent_message_event(event_type, event, node_name, active_messa
             
             # SOLUTION: "Late Arrival" Pattern - Send CSV as a NEW message (not updating existing)
             # This bypasses Chainlit's flaky msg.update(elements=[...]) behavior
-            csv_data, csv_filename = retrieve_csv_all_methods(node_name)
-            
-            # Send CSV as a NEW message (Late Arrival Pattern)
-            if csv_data and csv_filename:
-                await send_csv_as_message(csv_data, csv_filename)
-                clear_csv_storage()
+            # CRITICAL: Only retrieve CSV for Guardian agent (portfolio pacing tool)
+            if node_name == "guardian":
+                csv_data, csv_filename = retrieve_csv_all_methods(node_name)
+                
+                # Send CSV as a NEW message (Late Arrival Pattern)
+                if csv_data and csv_filename:
+                    await send_csv_as_message(csv_data, csv_filename)
+                    clear_csv_storage(node_name)  # Clear only for this node
             
             # Update the original message normally (without CSV)
             try:

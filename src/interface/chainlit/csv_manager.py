@@ -104,10 +104,13 @@ def retrieve_csv_from_file_cache(node_name: str = None) -> tuple[str | None, str
         return None, None
 
 
-def retrieve_csv_from_global_storage() -> tuple[str | None, str | None]:
+def retrieve_csv_from_global_storage(node_name: str = None) -> tuple[str | None, str | None]:
     """
     Retrieve CSV data from global storage dictionary.
     
+    Args:
+        node_name: Optional node name to filter by (e.g., "guardian")
+        
     Returns:
         Tuple of (csv_data, csv_filename) or (None, None) if not found
     """
@@ -115,17 +118,23 @@ def retrieve_csv_from_global_storage() -> tuple[str | None, str | None]:
         logger.info(f"🔍 Global storage keys: {list(_GLOBAL_CSV_STORAGE.keys())}")
         for storage_key, csv_info in _GLOBAL_CSV_STORAGE.items():
             if "analyze_portfolio_pacing" in storage_key:
+                # FILTER BY NODE_NAME if provided - only return CSV for the correct agent
+                stored_node_name = csv_info.get("node_name", "guardian")
+                if node_name and stored_node_name != node_name:
+                    logger.debug(f"🔍 Skipping CSV in global storage: stored_node={stored_node_name}, requested_node={node_name}")
+                    continue  # Skip if node_name doesn't match
+                
                 csv_data = csv_info.get("csv")
                 csv_filename = csv_info.get("filename")
                 if csv_data and csv_filename:
-                    logger.info(f"✅ Found CSV in global storage: filename={csv_filename}")
+                    logger.info(f"✅ Found CSV in global storage: filename={csv_filename}, node_name={stored_node_name}")
                     
                     # Store in session for next time
                     csv_attachments = cl.user_session.get("csv_attachments", {})
                     csv_attachments["analyze_portfolio_pacing"] = {
                         "csv": csv_data,
                         "filename": csv_filename,
-                        "node_name": csv_info.get("node_name", "guardian")
+                        "node_name": stored_node_name
                     }
                     cl.user_session.set("csv_attachments", csv_attachments)
                     
@@ -260,8 +269,8 @@ def retrieve_csv_all_methods(node_name: str = None) -> tuple[str | None, str | N
     if csv_data and csv_filename:
         return csv_data, csv_filename
     
-    # Method 3: Global storage
-    csv_data, csv_filename = retrieve_csv_from_global_storage()
+    # Method 3: Global storage (with node_name filtering)
+    csv_data, csv_filename = retrieve_csv_from_global_storage(node_name)
     if csv_data and csv_filename:
         return csv_data, csv_filename
     
@@ -347,30 +356,81 @@ def store_csv_in_session(csv_data: str, csv_filename: str, tool_name: str, node_
     logger.info(f"✅ Stored CSV in session: {csv_filename}")
 
 
-def clear_csv_storage() -> None:
+def clear_csv_storage(node_name: str = None) -> None:
     """
-    Clear CSV data from module-level storage to prevent duplicates.
+    Clear CSV data from all storage locations to prevent duplicates.
+    
+    Args:
+        node_name: Optional node name to filter clearing (if None, clears all)
     """
     try:
+        # 1. Clear session storage
         try:
-            from src.utils.agent_loop import execute_agent_loop
-        except ImportError:
-            # Fallback: ensure project root is in path, then try importing
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            if project_root not in sys.path:
-                sys.path.insert(0, project_root)
-            
-            if 'src.utils.agent_loop' in sys.modules:
-                execute_agent_loop = sys.modules['src.utils.agent_loop'].execute_agent_loop
+            csv_attachments = cl.user_session.get("csv_attachments", {})
+            if node_name:
+                # Clear only for this node
+                for tool_name, csv_info in list(csv_attachments.items()):
+                    if csv_info.get("node_name") == node_name:
+                        del csv_attachments[tool_name]
+                        logger.debug(f"Cleared CSV from session: {tool_name} for {node_name}")
             else:
-                agent_loop_module = importlib.import_module('src.utils.agent_loop')
-                execute_agent_loop = agent_loop_module.execute_agent_loop
+                # Clear all
+                csv_attachments.clear()
+                logger.debug("Cleared all CSV from session")
+            cl.user_session.set("csv_attachments", csv_attachments)
+        except Exception as e:
+            logger.debug(f"Could not clear session CSV storage: {e}")
         
-        if hasattr(execute_agent_loop, '_csv_storage'):
-            for key in list(execute_agent_loop._csv_storage.keys()):
-                if "analyze_portfolio_pacing" in key:
-                    del execute_agent_loop._csv_storage[key]
-                    logger.debug(f"Cleared CSV from storage: {key}")
+        # 2. Clear global storage
+        try:
+            if node_name:
+                # Clear only for this node
+                for key in list(_GLOBAL_CSV_STORAGE.keys()):
+                    csv_info = _GLOBAL_CSV_STORAGE.get(key, {})
+                    if csv_info.get("node_name") == node_name and "analyze_portfolio_pacing" in key:
+                        del _GLOBAL_CSV_STORAGE[key]
+                        logger.debug(f"Cleared CSV from global storage: {key} for {node_name}")
+            else:
+                # Clear all
+                keys_to_remove = [k for k in _GLOBAL_CSV_STORAGE.keys() if "analyze_portfolio_pacing" in k]
+                for key in keys_to_remove:
+                    del _GLOBAL_CSV_STORAGE[key]
+                logger.debug(f"Cleared {len(keys_to_remove)} CSV entries from global storage")
+        except Exception as e:
+            logger.debug(f"Could not clear global CSV storage: {e}")
+        
+        # 3. Clear module storage
+        try:
+            try:
+                from src.utils.agent_loop import execute_agent_loop
+            except ImportError:
+                # Fallback: ensure project root is in path, then try importing
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+                
+                if 'src.utils.agent_loop' in sys.modules:
+                    execute_agent_loop = sys.modules['src.utils.agent_loop'].execute_agent_loop
+                else:
+                    agent_loop_module = importlib.import_module('src.utils.agent_loop')
+                    execute_agent_loop = agent_loop_module.execute_agent_loop
+            
+            if hasattr(execute_agent_loop, '_csv_storage'):
+                if node_name:
+                    # Clear only for this node
+                    for key in list(execute_agent_loop._csv_storage.keys()):
+                        csv_info = execute_agent_loop._csv_storage.get(key, {})
+                        if csv_info.get("node_name") == node_name and "analyze_portfolio_pacing" in key:
+                            del execute_agent_loop._csv_storage[key]
+                            logger.debug(f"Cleared CSV from module storage: {key} for {node_name}")
+                else:
+                    # Clear all
+                    keys_to_remove = [k for k in execute_agent_loop._csv_storage.keys() if "analyze_portfolio_pacing" in k]
+                    for key in keys_to_remove:
+                        del execute_agent_loop._csv_storage[key]
+                    logger.debug(f"Cleared {len(keys_to_remove)} CSV entries from module storage")
+        except Exception as e:
+            logger.debug(f"Could not clear module CSV storage: {e}")
     except Exception as e:
         logger.debug(f"Could not clear CSV storage: {e}")
 
