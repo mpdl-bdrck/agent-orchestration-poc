@@ -24,6 +24,8 @@
 **Routing**: Structured Output (`RouteDecision`) - NO tools  
 **State Management**: LangGraph `AgentState` TypedDict
 
+**Vision**: See [`docs/vision/README.md`](docs/vision/README.md) for the strategic vision and progressive autonomy model that guides this implementation.
+
 ### Flow Diagram
 
 ```

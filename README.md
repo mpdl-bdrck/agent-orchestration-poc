@@ -2,24 +2,40 @@
 
 A robust, multi-agent orchestration system built on **LangGraph**, **LangChain**, and **Google Gemini 2.5 Flash**. This system demonstrates the **Supervisor Pattern** to coordinate specialist agents for Programmatic Advertising (DSP) portfolio management.
 
+## 🎯 Vision & Strategy
+
+This POC implements the foundational architecture for **Bedrock Platform's autonomous agentic AI vision**. 
+
+> **📖 [Read the full vision →](docs/vision/README.md)**  
+> The vision document outlines our path from reactive problem-solving to proactive autonomous optimization, with progressive autonomy stages that build trust through validated performance.
+
+**Key Concepts**:
+- **Four-Stage Progressive Autonomy**: Alerts → Recommendations → Approval-Based → Autonomous
+- **System of Record Learning**: Agents learn from human expertise by observing outcomes
+- **Multi-Agent Collaboration**: Specialized agents coordinate to optimize programmatic advertising operations 24/7
+
+For detailed architecture, autonomy models, and strategic planning, see [`docs/vision/README.md`](docs/vision/README.md).
+
+---
+
 ## 🌟 Key Features
 
 - **LangGraph Supervisor Architecture**: A central Orchestrator node uses structured outputs (`RouteDecision`) to intelligently route tasks to specialist agents or knowledge base tools.
 - **"Glass Box" Visibility**: Real-time streaming of agent reasoning, tool inputs, and state transitions via Chainlit.
 - **Robust Tooling**: Tools handle malformed inputs gracefully, preventing LLM-induced crashes.
-- **Cost & Inhibition Protocols**: "Tool Holster" logic prevents agents from using expensive tools for simple greetings or out-of-scope queries.
 - **Hybrid Interface**: 
   - **CLI**: Detailed debug/reasoning output.
   - **Chainlit UI**: Modern multi-agent chat interface with real-time streaming and agent-specific chat bubbles.
 
 ## 🤖 Agent Roster
 
-The system orchestrates four specialized agents:
+The system orchestrates five agents:
 
-1.  **🛡️ Guardian Agent**: Portfolio oversight, health monitoring, and anomaly detection. Equipped with the `analyze_portfolio_pacing` tool.
-2.  **🔧 Specialist Agent**: Deep diagnostic analysis, root cause identification, and troubleshooting.
-3.  **🎯 Optimizer Agent**: Budget allocation, bid optimization, and creative rotation strategies.
-4.  **🧭 Pathfinder Agent**: Supply chain navigation, QPS optimization, and SSP relationship management.
+1.  **💠 Orchestrator Agent**: Central supervisor and router that coordinates all specialist agents, handles knowledge base queries, and provides conversational interface.
+2.  **🛡️ Guardian Agent**: Portfolio oversight, health monitoring, and anomaly detection. Equipped with the `analyze_portfolio_pacing` tool.
+3.  **🔬 Specialist Agent**: Deep diagnostic analysis, root cause identification, and troubleshooting.
+4.  **🎯 Optimizer Agent**: Budget allocation, bid optimization, and creative rotation strategies.
+5.  **🧭 Pathfinder Agent**: Supply chain navigation, QPS optimization, and SSP relationship management.
 
 ## 🏗️ Architecture
 
@@ -201,7 +217,17 @@ src/
 ## 📚 Documentation
 
 ### Core Architecture
-- **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development, holstering, and instruction injection at runtime
+- **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development and instruction injection at runtime
+
+### 🎯 Vision & Strategic Planning
+
+> **Start here**: [`docs/vision/README.md`](docs/vision/README.md) - **The strategic vision** that guides this implementation, outlining the path from reactive problem-solving to proactive autonomous optimization.
+
+- **`docs/vision/README.md`**: Vision for autonomous deal optimization & supply chain management
+- **`docs/vision/THREE_LAYER_ARCHITECTURE.md`**: Foundation architecture separating intelligence, communication, and capabilities
+- **`docs/vision/PROGRESSIVE_AUTONOMY.md`**: Four-stage evolution from alerts to autonomous action
+- **`docs/vision/SYSTEM_OF_RECORD.md`**: Learning engine design for building trust and validation
+- **`docs/vision/TOOL_DEVELOPMENT_MATRIX.md`**: Comprehensive tool registry and development roadmap
 
 ### UI & Persistence
 - **`docs/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite (recommended approach)

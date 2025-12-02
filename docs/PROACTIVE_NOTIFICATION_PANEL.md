@@ -5,6 +5,8 @@
 **Current Stage**: Stage 1 (Notification Only)  
 **Vision**: Autonomous → Human-in-the-Loop workflow
 
+> **Vision Integration**: This document describes the UI implementation of the [Progressive Autonomy Model](vision/PROGRESSIVE_AUTONOMY.md). The notification panel is how users interact with each stage of progressive autonomy evolution.
+
 ---
 
 ## Overview
@@ -29,7 +31,7 @@ The **Proactive Notification Panel** is the "killer feature" that transforms the
 
 ## The Progressive Autonomy Model
 
-This feature evolves through four stages, aligned with our [Progressive Autonomy Model](PROGRESSIVE_AUTONOMY.md):
+This feature evolves through four stages, aligned with our [Progressive Autonomy Model](vision/PROGRESSIVE_AUTONOMY.md):
 
 ### Stage 1: Diagnosis & Alert (Current)
 **Agent Capability**: Detect issues, generate alerts  
@@ -658,8 +660,8 @@ async def background_monitor():
 
 ## Related Documentation
 
-- [Progressive Autonomy Model](PROGRESSIVE_AUTONOMY.md) - Four-stage evolution
-- [Tool Instructions Architecture](tool_instructions_architecture.md) - Agent context injection
+- [Progressive Autonomy Model](vision/PROGRESSIVE_AUTONOMY.md) - Four-stage evolution
+- [Tool Instructions Architecture](TOOL_INSTRUCTIONS_ARCHITECTURE.md) - Agent context injection
 - [Chainlit SQLite Persistence](CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence
 
 ---

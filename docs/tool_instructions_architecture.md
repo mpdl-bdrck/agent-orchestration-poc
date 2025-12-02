@@ -7,8 +7,7 @@ This document describes the **multi-layer architecture** for tool documentation,
 1. **System Prompt Toolkit** - Static reference with tool contracts (inputs/outputs)
 2. **Execution Instructions** - Dynamic, contextual guidance loaded from markdown files
 3. **Account Defaults Injection** - Runtime injection of agent-specific defaults (Guardian-specific)
-4. **Tool Holstering** - Runtime prevention of tool usage based on supervisor instructions
-5. **Supervisor Instructions** - Runtime guidance injected via XML tags
+4. **Supervisor Instructions** - Runtime guidance injected via XML tags
 
 ---
 
@@ -158,61 +157,7 @@ Only override these if the user explicitly specifies a different account or adve
 
 ---
 
-### Layer 4: Tool Holstering (Runtime Prevention)
-
-**Purpose**: Physically prevent tool usage when supervisor explicitly forbids it.
-
-**Location**: `src/agents/orchestrator/graph/nodes/guardian.py` (lines 41-131)
-
-**How It Works**:
-
-1. **Detection** (lines 46-55): Checks supervisor instruction for explicit "no tools" directives:
-   - "strictly forbidden from using tools"
-   - "do not use tools"
-   - "text only"
-   - "speak text only"
-   - "forbidden from using"
-   - "must not use tools"
-
-2. **Execution Path Selection** (lines 98-131):
-   - **If holstered**: Calls `agent.analyze_without_tools()` (line 103)
-   - **If not holstered**: Normal path with tools available
-
-3. **Agent-Level Implementation** (`src/agents/specialists/guardian_agent.py`):
-   - `analyze_without_tools()` (lines 190-228): Runs LLM without binding tools
-   - `analyze()` (line 231): Accepts `use_tools` parameter (default: True)
-   - When `use_tools=False`: Falls back to `super().analyze()` (no tool binding)
-
-**Example Supervisor Instruction**:
-```
-<supervisor_instruction>
-STRICTLY FORBIDDEN from using tools. This is a greeting/introduction request. 
-Respond with text only.
-</supervisor_instruction>
-```
-
-**Logging**:
-- Holster status is logged: `"✅ Tool Holster ACTIVE - tools will be disabled"`
-- Instruction is logged: `"Guardian node - Instruction: '{instruction}' | Holster tools: {should_holster_tools}"`
-
-**Fallback Mechanism**:
-- If `analyze_without_tools()` doesn't exist: Falls back to `call_specialist_agent_func()` with `use_tools=False`
-- If agent doesn't support holstering: Tools remain available (no prevention)
-
-**When to Use**:
-- Greetings/introductions
-- General conversation
-- Questions that don't require data retrieval
-- When supervisor explicitly forbids tools
-
-**Why Not Prompt-Based Prevention?**:
-- Fast models (like Gemini Flash) often ignore "do not use tools" prompts
-- Physical removal is more reliable than hoping LLM won't call tools
-- Prevents crashes from unnecessary tool calls
-
----
-
-### Layer 5: Supervisor Instructions (Runtime Guidance)
+### Layer 4: Supervisor Instructions (Runtime Guidance)
 
 **Purpose**: Inject runtime guidance from supervisor into agent prompts.
 
@@ -230,7 +175,6 @@ system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instru
 
 **Format**:
 - XML tags: `<supervisor_instruction>...</supervisor_instruction>`
-- Can contain tool holstering directives
 - Can contain specific task instructions
 - Can contain context about why agent was called
 
@@ -247,35 +191,27 @@ RouteDecision with instruction
     ↓
 Guardian Node
     ↓
-Check Supervisor Instruction
-    ├─ Contains "forbidden from using tools"?
-    │   ├─ YES → Tool Holster ACTIVE
-    │   │   └─ Call analyze_without_tools()
-    │   │       └─ LLM runs WITHOUT tools bound
-    │   └─ NO → Tool Holster INACTIVE
-    │       └─ Call analyze() with use_tools=True
-    │           ↓
-    │       Build System Prompt
-    │       ├─ Base prompt
-    │       ├─ Toolkit reference (Layer 1)
-    │       ├─ Account defaults (Layer 3)
-    │       └─ Supervisor instruction (Layer 5)
-    │           ↓
-    │       Execute Agent Loop
-    │           ↓
-    │       LLM decides to call tool
-    │           ↓
-    │       Load Execution Instructions (Layer 2)
-    │       ├─ Read markdown file
-    │       ├─ Replace template variables
-    │       ├─ Extract relevant sections
-    │       └─ Inject as HumanMessage BEFORE tool execution
-    │           ↓
-    │       Execute Tool
-    │           ↓
-    │       LLM processes tool result WITH instructions
-    │           ↓
-    │       Return formatted response
+Build System Prompt
+    ├─ Base prompt
+    ├─ Toolkit reference (Layer 1)
+    ├─ Account defaults (Layer 3)
+    └─ Supervisor instruction (Layer 4)
+        ↓
+    Execute Agent Loop
+        ↓
+    LLM decides to call tool
+        ↓
+    Load Execution Instructions (Layer 2)
+    ├─ Read markdown file
+    ├─ Replace template variables
+    ├─ Extract relevant sections
+    └─ Inject as HumanMessage BEFORE tool execution
+        ↓
+    Execute Tool
+        ↓
+    LLM processes tool result WITH instructions
+        ↓
+    Return formatted response
 ```
 
 ---
@@ -318,39 +254,7 @@ The `execute_agent_loop` function in `src/utils/agent_loop.py` automatically:
 
 **Code Location**: `src/utils/agent_loop.py` lines 157-183
 
-### 4. Tool Holstering Implementation
-
-**Node Level** (`src/agents/orchestrator/graph/nodes/guardian.py`):
-```python
-# Check supervisor instruction for "no tools" directives
-instruction_lower = instruction.lower()
-explicit_no_tools_directives = [
-    "strictly forbidden from using tools",
-    "do not use tools",
-    "text only",
-    # ... more directives
-]
-should_holster_tools = any(directive in instruction_lower for directive in explicit_no_tools_directives)
-
-if should_holster_tools:
-    result = agent.analyze_without_tools(...)
-else:
-    result = call_specialist_agent_func(...)  # Normal path with tools
-```
-
-**Agent Level** (`src/agents/specialists/guardian_agent.py`):
-```python
-def analyze_without_tools(self, question: str, context: str, supervisor_instruction: str = None):
-    """Run LLM WITHOUT binding tools."""
-    system_prompt = self._get_system_prompt(supervisor_instruction=supervisor_instruction)
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-    
-    # Call LLM WITHOUT binding tools
-    response = self.llm.invoke(messages)  # No .bind_tools() call
-    return {'answer': response.content}
-```
-
-### 5. Account Defaults Injection
+### 4. Account Defaults Injection
 
 **Location**: `src/agents/specialists/guardian_agent.py::analyze()` (lines 277-286)
 
@@ -383,11 +287,7 @@ Only override these if the user explicitly specifies a different account or adve
 - `src/agents/specialists/guardian_agent.py` - Example implementation
   - `_get_system_prompt()` - Appends toolkit reference
   - `analyze()` - Handles account defaults injection
-  - `analyze_without_tools()` - Tool holstering implementation
 - `src/utils/agent_loop.py` - Automatic instruction injection (lines 157-183)
-
-### Graph Node Integration
-- `src/agents/orchestrator/graph/nodes/guardian.py` - Tool holstering detection (lines 41-131)
 
 ### Execution Instructions
 - `tools/campaign-portfolio-pacing/execution_instructions.md` - Example execution instructions
@@ -402,8 +302,7 @@ Only override these if the user explicitly specifies a different account or adve
 4. **Context-Aware**: Instructions adapt to question keywords
 5. **Scalable**: Easy to add tools and instructions
 6. **Developer-Friendly**: Clear structure for maintaining instructions
-7. **Reliable**: Physical tool holstering prevents unwanted tool calls
-8. **Flexible**: Multiple layers allow fine-grained control
+7. **Flexible**: Multiple layers allow fine-grained control
 
 ---
 
@@ -450,13 +349,6 @@ tool_path_mappings = {
 
 The agent will automatically generate toolkit reference from tool schemas when `_get_system_prompt()` is called.
 
-### Step 4: Implement Tool Holstering (Optional)
-
-If your agent needs tool holstering:
-1. Implement `analyze_without_tools()` method
-2. Update graph node to check supervisor instructions
-3. Call `analyze_without_tools()` when holstering is active
-
 ---
 
 ## Maintenance
@@ -465,7 +357,6 @@ If your agent needs tool holstering:
 - **Execution Instructions**: Maintained by developers in markdown files alongside tool code
 - **Template Variables**: Updated automatically at runtime based on question and tool args
 - **Account Defaults**: Agent-specific, maintained in agent code
-- **Tool Holstering**: Supervisor-driven, no maintenance needed
 
 ---
 
@@ -476,10 +367,6 @@ If your agent needs tool holstering:
 - **Template Variable Missing**: Variable remains as `{variable_name}` in output
 - **File Parsing Error**: Returns `None`, no instructions injected
 
-### Tool Holstering
-- **Method Missing**: Falls back to `call_specialist_agent_func()` with `use_tools=False`
-- **Agent Doesn't Support**: Tools remain available (no prevention)
-
 ### Account Defaults
 - **Extraction Fails**: Uses default values from `_extract_account_info()`
 - **No Account Info**: Defaults to account_id="17", advertiser_filter=None
@@ -489,7 +376,6 @@ If your agent needs tool holstering:
 ## Related Documentation
 
 - **Tool Development Guide**: See `AI_HANDOFF.md` ADR-001 (Robust Tool Execution Strategy)
-- **Tool Holstering**: See `docs/incidents/2025-11-29-guardian-loop.md` (Three-Layer Defense)
 - **Canary Pattern**: See `src/tools/portfolio_pacing_tool.py` (Example implementation)
 
 ---
