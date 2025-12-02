@@ -1183,6 +1183,6 @@ def evaluate_stage_demotion(self):
 ## Related Documentation
 
 - [Progressive Autonomy](PROGRESSIVE_AUTONOMY.md)
-- [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md)
+- [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md)
 - [Agentic Vision Overview](README.md)
 

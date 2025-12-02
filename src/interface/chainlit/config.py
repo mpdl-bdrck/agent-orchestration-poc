@@ -45,7 +45,7 @@ except Exception:
     pass
 
 # Configure Chainlit's data layer BEFORE importing chainlit
-# DISABLED: Chainlit's database persistence is fundamentally broken (see CHAINLIT_SQLITE_PERSISTENCE.md)
+# DISABLED: Chainlit's database persistence is fundamentally broken (see docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md)
 # Chainlit has bugs: InvalidTextRepresentationError, NotNullViolationError, DataError
 # These errors flood the console and make debugging impossible
 # SOLUTION: Disable persistence entirely - we're building an Agent System, not a Chat History System
@@ -58,7 +58,7 @@ _GLOBAL_CSV_STORAGE = {}
 os.environ["CHAINLIT_DATABASE_URL"] = ""
 print("ℹ️  Chainlit persistence DISABLED (Chainlit's database layer has critical bugs)")
 print("   Chat history will not persist across sessions (acceptable for POC)")
-print("   See CHAINLIT_SQLITE_PERSISTENCE.md for details")
+print("   See docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md for details")
 
 # Enable Guardian tools by default for Chainlit UI
 # Force enable unless explicitly disabled in .env

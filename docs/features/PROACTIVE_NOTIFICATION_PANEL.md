@@ -5,7 +5,7 @@
 **Current Stage**: Stage 1 (Notification Only)  
 **Vision**: Autonomous → Human-in-the-Loop workflow
 
-> **Vision Integration**: This document describes the UI implementation of the [Progressive Autonomy Model](vision/PROGRESSIVE_AUTONOMY.md). The notification panel is how users interact with each stage of progressive autonomy evolution.
+> **Vision Integration**: This document describes the UI implementation of the [Progressive Autonomy Model](../vision/PROGRESSIVE_AUTONOMY.md). The notification panel is how users interact with each stage of progressive autonomy evolution.
 
 ---
 
@@ -660,9 +660,9 @@ async def background_monitor():
 
 ## Related Documentation
 
-- [Progressive Autonomy Model](vision/PROGRESSIVE_AUTONOMY.md) - Four-stage evolution
-- [Tool Instructions Architecture](TOOL_INSTRUCTIONS_ARCHITECTURE.md) - Agent context injection
-- [Chainlit SQLite Persistence](CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence
+- [Progressive Autonomy Model](../vision/PROGRESSIVE_AUTONOMY.md) - Four-stage evolution
+- [Tool Instructions Architecture](../guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md) - Agent context injection
+- [Chainlit SQLite Persistence](../guides/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence
 
 ---
 

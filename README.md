@@ -114,7 +114,7 @@ POSTGRES_PASSWORD=your_password_here
 **Important**: 
 - This setup uses **LOCAL PostgreSQL** only (localhost)
 - Chainlit persistence is currently disabled (acceptable for POC)
-- If you need conversation history persistence, see [`docs/CHAINLIT_SQLITE_PERSISTENCE.md`](docs/CHAINLIT_SQLITE_PERSISTENCE.md) for SQLite setup
+- If you need conversation history persistence, see [`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`](docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md) for SQLite setup
 
 ### 4. Knowledge Base Ingestion
 
@@ -217,7 +217,7 @@ src/
 ## 📚 Documentation
 
 ### Core Architecture
-- **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development and instruction injection at runtime
+- **`docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development and instruction injection at runtime
 
 ### 🎯 Vision & Strategic Planning
 
@@ -230,5 +230,5 @@ src/
 - **`docs/vision/TOOL_DEVELOPMENT_MATRIX.md`**: Comprehensive tool registry and development roadmap
 
 ### UI & Persistence
-- **`docs/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite (recommended approach)
-- **`docs/PROACTIVE_NOTIFICATION_PANEL.md`**: North star feature - transforming from reactive chatbot to proactive command center
+- **`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite (recommended approach)
+- **`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`**: North star feature - transforming from reactive chatbot to proactive command center

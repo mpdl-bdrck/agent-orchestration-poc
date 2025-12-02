@@ -293,9 +293,9 @@ asyncpg.exceptions.UndefinedTableError: relation "Element" does not exist
 
 **Files**:
 - `src/interface/chainlit/config.py` - Persistence disable and monkey-patches
-- `docs/CHAINLIT_SQLITE_PERSISTENCE.md` - Future SQLite implementation guide
+- `docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md` - Future SQLite implementation guide
 
-**Future Recommendation**: If persistence is needed, use **SQLite** instead of PostgreSQL (see `CHAINLIT_SQLITE_PERSISTENCE.md`).
+**Future Recommendation**: If persistence is needed, use **SQLite** instead of PostgreSQL (see `docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`).
 
 ---
 
@@ -631,10 +631,10 @@ asyncpg.exceptions.UndefinedTableError: relation "Element" does not exist
 - SQLite is permissive and handles Chainlit's data types gracefully
 - No schema conflicts, no crashes
 - Decouples "UI Memory" (SQLite) from "Agent Brain" (Postgres)
-- See `docs/CHAINLIT_SQLITE_PERSISTENCE.md` for full implementation guide
+- See `docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md` for full implementation guide
 
 **Related Files**:
-- `docs/CHAINLIT_SQLITE_PERSISTENCE.md` - SQLite persistence guide
+- `docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md` - SQLite persistence guide
 - `scripts/cleanup_chainlit_databases.sh` - Cleanup script for Postgres artifacts
 - `src/interface/chainlit/config.py` - Persistence disable and monkey-patches
 

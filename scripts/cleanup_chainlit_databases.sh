@@ -99,5 +99,5 @@ echo ""
 echo "✅ Cleanup complete!"
 echo ""
 echo "📝 Note: Chainlit persistence is disabled in app.py"
-echo "   If you want persistence in the future, consider SQLite (see CHAINLIT_SQLITE_PERSISTENCE.md)"
+echo "   If you want persistence in the future, consider SQLite (see docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md)"
 

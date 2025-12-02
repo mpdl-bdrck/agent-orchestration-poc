@@ -59,9 +59,11 @@ docs/
 │   ├── PROGRESSIVE_AUTONOMY.md    # 4-stage autonomy model
 │   ├── SYSTEM_OF_RECORD.md         # Learning engine design
 │   └── TOOL_DEVELOPMENT_MATRIX.md  # Tool registry & roadmap
-├── PROACTIVE_NOTIFICATION_PANEL.md  # Existing feature docs
-├── TOOL_INSTRUCTIONS_ARCHITECTURE.md
-└── CHAINLIT_SQLITE_PERSISTENCE.md
+├── guides/
+│   ├── TOOL_INSTRUCTIONS_ARCHITECTURE.md
+│   └── CHAINLIT_SQLITE_PERSISTENCE.md
+└── features/
+    └── PROACTIVE_NOTIFICATION_PANEL.md
 ```
 
 ---
@@ -161,7 +163,7 @@ docs/
 - [ ] Remove line 10: "Cost & Inhibition Protocols" bullet point about Tool Holster
 - [ ] Update line 204: Remove "holstering, and" from TOOL_INSTRUCTIONS_ARCHITECTURE.md description
 
-**TOOL_INSTRUCTIONS_ARCHITECTURE.md Updates**:
+**docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md Updates**:
 - [ ] Update overview (line 10): Change from 5 layers to 4 layers, remove "Tool Holstering"
 - [ ] Remove entire "Layer 4: Tool Holstering" section (lines 161-212)
 - [ ] Update "Complete Flow Diagram" (lines 239-279): Remove tool holstering decision branch
@@ -342,7 +344,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
   ## 📚 Documentation
 
   ### Core Architecture
-  - **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development and instruction injection at runtime
+  - **`docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**: Complete guide to tool development and instruction injection at runtime
 
   ### Vision & Strategic Planning
   - **`docs/vision/README.md`**: Vision for autonomous deal optimization & supply chain management
@@ -352,8 +354,8 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
   - **`docs/vision/TOOL_DEVELOPMENT_MATRIX.md`**: Comprehensive tool registry and development roadmap
 
   ### UI & Persistence
-  - **`docs/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite
-  - **`docs/PROACTIVE_NOTIFICATION_PANEL.md`**: North star feature - transforming from reactive chatbot to proactive command center
+  - **`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`**: Guide to enabling Chainlit conversation history using SQLite
+  - **`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`**: North star feature - transforming from reactive chatbot to proactive command center
   ```
 
 ### 4.2 AI_HANDOFF.md
@@ -385,7 +387,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
   - **[Deal Debugging Plan](../../plans/deal_debugging_plan.md)** - Technical specifications for diagnosis tools
   - **[Deal Toolkit Architecture](../../plans/deal_toolkit_architecture.md)** - Current tool capabilities and integration patterns
   - **[AI Handoff Document](../../AI_HANDOFF.md)** - Implementation reference for current architecture
-  - **[Tool Instructions Architecture](../TOOL_INSTRUCTIONS_ARCHITECTURE.md)** - Tool development patterns
+  - **[Tool Instructions Architecture](../guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md)** - Tool development patterns
   ```
 
 ---
@@ -417,7 +419,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
 
 1. **Phase 1**: File relocation (quick, low risk)
 2. **Phase 2**: MCP removal (systematic, file by file)
-   - **Phase 2.6**: Remove tool holster references (README.md + TOOL_INSTRUCTIONS_ARCHITECTURE.md)
+   - **Phase 2.6**: Remove tool holster references (README.md + docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md)
 3. **Phase 3**: Orchestrator integration (adds new content)
 4. **Phase 4**: Cross-referencing (connects everything)
    - **Phase 4.1**: Update README.md (agent roster + documentation section)
@@ -440,7 +442,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
 
 ✅ All vision docs relocated to `docs/vision/`  
 ✅ Zero MCP references in vision docs (no exceptions - this project doesn't use MCP)  
-✅ Zero tool holster references in README.md and TOOL_INSTRUCTIONS_ARCHITECTURE.md  
+✅ Zero tool holster references in README.md and docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md  
 ✅ Orchestrator agent documented in all relevant vision docs  
 ✅ README agent roster updated with Orchestrator (💠) and Specialist emoji changed to 🔬  
 ✅ All cross-references working correctly  

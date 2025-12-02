@@ -4,7 +4,7 @@
 **Status**: 📋 **Architectural Refactoring Plan**  
 **Related Documentation**: 
 - [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core architectural patterns
-- [`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`](../docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md) - Tool instruction layers
+- [`docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md`](../docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md) - Tool instruction layers
 
 ---
 
@@ -74,7 +74,7 @@ Additionally, we'll make all agents respond concisely (like Guardian currently d
   - [ ] Remove any references to this method
 
 - [ ] Update documentation
-  - [ ] Remove tool holstering section from `docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`
+  - [ ] Remove tool holstering section from `docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md`
   - [ ] Update `AI_HANDOFF.md` to remove Pattern 2 (Tool Holster Pattern)
   - [ ] Update ADR 001 to remove tool holstering from Three-Layer Defense
 
@@ -362,11 +362,11 @@ If agents misuse tools after removing holstering:
    - Update ADR 001 (remove tool holstering from Three-Layer Defense)
    - Add note about trusting tool descriptions
 
-2. **`docs/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**:
+2. **`docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md`**:
    - Remove Layer 4 (Tool Holstering) section
    - Update to reflect prompt-driven approach
 
-3. **`docs/PROACTIVE_NOTIFICATION_PANEL.md`**:
+3. **`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`**:
    - No changes needed (unrelated feature)
 
 ---
@@ -377,7 +377,7 @@ If agents misuse tools after removing holstering:
 2. ✅ **Simplify Guardian prompt** (remove verbose rules)
 3. ✅ **Simplify other agent prompts** (add concise response instructions)
 4. ✅ **Update supervisor prompt** (remove "FORBIDDEN" references)
-5. ✅ **Update documentation** (AI_HANDOFF.md, TOOL_INSTRUCTIONS_ARCHITECTURE.md)
+5. ✅ **Update documentation** (AI_HANDOFF.md, docs/guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md)
 6. ✅ **Test end-to-end** (introductions, tool usage, edge cases)
 7. ✅ **Verify success criteria**
 

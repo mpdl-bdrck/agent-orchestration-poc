@@ -78,7 +78,7 @@ Phase 1 and Phase 2 implementation details are distributed across the documents 
 - **[Deal Debugging Plan](../../plans/deal_debugging_plan.md)** - Technical specifications for diagnosis tools
 - **[Deal Toolkit Architecture](../../plans/deal_toolkit_architecture.md)** - Current tool capabilities and integration patterns
 - **[AI Handoff Document](../../AI_HANDOFF.md)** - Implementation reference for current architecture
-- **[Tool Instructions Architecture](../TOOL_INSTRUCTIONS_ARCHITECTURE.md)** - Tool development patterns
+- **[Tool Instructions Architecture](../guides/TOOL_INSTRUCTIONS_ARCHITECTURE.md)** - Tool development patterns
 
 ### Knowledge Base
 

@@ -1010,7 +1010,7 @@ Geo conflicts: 12/12 approved → 12/12 successful (100%)
 ## Related Documentation
 
 - [System of Record](SYSTEM_OF_RECORD.md)
-- [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md)
+- [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md)
 - [Agentic Vision Overview](README.md)
 - [Proactive Notification Panel](../PROACTIVE_NOTIFICATION_PANEL.md) - UI mechanism that materializes progressive autonomy stages
 

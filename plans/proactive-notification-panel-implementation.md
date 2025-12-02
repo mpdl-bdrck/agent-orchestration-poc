@@ -2,7 +2,7 @@
 
 **Date**: December 1, 2025  
 **Status**: 📋 **Implementation Plan** - Stage 1 with JSON-driven mock system  
-**Related Documentation**: [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md)
+**Related Documentation**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md)
 
 ---
 
@@ -20,9 +20,9 @@ This plan implements **Stage 1** of the Proactive Notification Panel feature, tr
 
 ## Cross-References
 
-- **Feature Documentation**: [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature specification, UX flow, and evolution stages
+- **Feature Documentation**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature specification, UX flow, and evolution stages
 - **Architecture Patterns**: [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core architectural patterns (State-based communication, Prompt-driven reasoning)
-- **Chainlit Integration**: [`docs/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
+- **Chainlit Integration**: [`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
 
 ---
 
@@ -268,7 +268,7 @@ SYSTEM_TRIGGER: Focus on {campaign_id|deal_id}. Context: {issue_type}. {details}
 - Responsive hover effects
 - Clean typography
 
-**Reference**: See [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md#step-a-the-react-frontend) for complete component code.
+**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#step-a-the-react-frontend) for complete component code.
 
 ---
 
@@ -295,7 +295,7 @@ SYSTEM_TRIGGER: Focus on {entity_id}. Context: {issue_type}. {details}
 SYSTEM_TRIGGER: Focus on Summer_2025. Context: under_pacing. Current spend: $12K of $20K budget. Expected: $16K by now.
 ```
 
-**Reference**: See [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md#step-c-context-injection-handler) for implementation details.
+**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#step-c-context-injection-handler) for implementation details.
 
 ---
 
@@ -314,7 +314,7 @@ SYSTEM_TRIGGER: Focus on Summer_2025. Context: under_pacing. Current spend: $12K
 - Background monitor waits 5 seconds before first alert
 - Alerts appear progressively based on mode
 
-**Reference**: See [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md#update-start-function-in-handlerspy) for code.
+**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#update-start-function-in-handlerspy) for code.
 
 ---
 
@@ -399,7 +399,7 @@ class APINotificationLoader:
 - **Search**: Search alerts by campaign/deal ID
 - **Real-time Updates**: WebSocket connection for live alerts
 
-**Reference**: See [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md#evolution-through-stages) for Stage 2-4 evolution.
+**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#evolution-through-stages) for Stage 2-4 evolution.
 
 ---
 
@@ -442,9 +442,9 @@ class APINotificationLoader:
 
 ## Related Documentation
 
-- **Feature Spec**: [`docs/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature documentation
+- **Feature Spec**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature documentation
 - **Architecture**: [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core patterns and principles
-- **Chainlit Docs**: [`docs/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
+- **Chainlit Docs**: [`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
 
 ---
 
