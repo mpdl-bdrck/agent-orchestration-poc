@@ -2,22 +2,16 @@
 
 **Epic**: Proactive Notification Panel Implementation  
 **Status**: 📋 Planning  
-**Total Tickets**: 26
+**Approach**: **Native Chainlit Messages + Actions** (No CustomElement)  
+**Total Tickets**: 20
 
 ---
 
 ## Ticket Status Summary
 
-- 🔴 **To Do**: 26 tickets
+- 🔴 **To Do**: 20 tickets
 - 🟡 **In Progress**: 0 tickets
 - 🟢 **Done**: 0 tickets
-
----
-
-## Prerequisites
-
-### Prerequisite: API Verification (1 ticket)
-- **PNP-000**: Verify Chainlit CustomElement API Before Implementation ⚠️ **CRITICAL - MUST DO FIRST**
 
 ---
 
@@ -31,32 +25,27 @@
 - PNP-005: Add JSON validation and error handling
 - PNP-006: Add auto-creation of default JSON if missing
 
-### Phase 2: Background Monitor Integration (5 tickets)
-- PNP-007: Update handlers.py with background_monitor() function
+### Phase 2: Background Monitor - Native Messages (5 tickets)
+- PNP-007: Create background_monitor() async function
 - PNP-008: Integrate NotificationLoader into background monitor
-- PNP-009: Support multiple playback modes in background monitor
-- PNP-010: Add error handling and retry logic
-- PNP-011: Add logging for alert push events
+- PNP-009: Send alerts as cl.Message with System author
+- PNP-010: Add visual distinction (emoji, formatting) to alert messages
+- PNP-011: Support multiple playback modes and error handling
 
-### Phase 3: React Component (5 tickets)
-- PNP-012: Create NotificationPanel.jsx React component
-- PNP-013: Implement alert rendering with severity colors
-- PNP-014: Add click handler for context injection
-- PNP-015: Style alerts with hover effects
-- PNP-016: Display agent emojis and timestamps
+### Phase 3: Action Buttons (4 tickets)
+- PNP-012: Create cl.Action buttons for alerts ("Fix Issue", "Dismiss")
+- PNP-013: Attach actions to alert messages with payload
+- PNP-014: Style action buttons appropriately
+- PNP-015: Test action button display and interaction
 
-### Phase 4: Context Injection (4 tickets)
-- PNP-017: Update main() function to detect SYSTEM_TRIGGER messages
-- PNP-018: Extract context from notification click events
-- PNP-019: Format context-injected messages for Orchestrator
-- PNP-020: Test routing to appropriate agents
+### Phase 4: Action Callbacks (3 tickets)
+- PNP-016: Create @cl.action_callback("fix_alert") handler
+- PNP-017: Create @cl.action_callback("dismiss_alert") handler
+- PNP-018: Implement context injection for "Fix Issue" action
 
-### Phase 5: Panel Initialization (5 tickets)
-- PNP-021: Update start() function in handlers.py
-- PNP-022: Create NotificationPanel CustomElement on chat start
-- PNP-023: Store panel reference in cl.user_session
-- PNP-024: Start background monitor task
-- PNP-025: Test panel appears in right sidebar
+### Phase 5: Integration & Styling (2 tickets)
+- PNP-019: Start background monitor in @cl.on_chat_start
+- PNP-020: Add CSS styling for alert messages (optional)
 
 ---
 
@@ -70,7 +59,13 @@
 
 ## ⚠️ Important Notes
 
-**CRITICAL**: Complete **PNP-000** before starting any implementation. The previous attempt failed due to incorrect API documentation. All tickets depend on having the correct Chainlit CustomElement API verified first.
+**APPROACH CHANGE**: This implementation uses **Native Chainlit APIs** (`cl.Message` + `cl.Action`) instead of CustomElement. This approach is:
+- ✅ More stable (no React context isolation issues)
+- ✅ Mobile-friendly
+- ✅ Production-ready
+- ✅ Easier to maintain
+
+**No CustomElement, no React components, no side panel** - alerts appear as messages in the chat feed.
 
 ---
 
@@ -82,5 +77,5 @@
 
 ---
 
-**Last Updated**: December 2, 2025
-
+**Last Updated**: December 2, 2025  
+**Approach**: Native Chainlit Messages + Actions

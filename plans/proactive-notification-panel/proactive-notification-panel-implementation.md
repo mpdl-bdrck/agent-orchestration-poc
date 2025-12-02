@@ -1,34 +1,39 @@
-# Proactive Notification Panel - Implementation Plan
+# Proactive Notification Panel - Implementation Plan (Revised)
 
-**Date**: December 1, 2025  
-**Status**: 📋 **Implementation Plan** - Stage 1 with JSON-driven mock system  
+**Date**: December 2, 2025  
+**Status**: 📋 **Implementation Plan** - Stage 1 using Native Chainlit Messages + Actions  
+**Approach**: **Native Chainlit APIs** (cl.Message + cl.Action) - No CustomElement hacking  
 **Related Documentation**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md)
 
 ---
 
 ## Overview
 
-This plan implements **Stage 1** of the Proactive Notification Panel feature, transforming the system from a reactive chatbot into a proactive conversational command center. The implementation uses a **JSON-driven mock system** that simulates real API responses, making it easy to test different scenarios and transition to real system integration later.
+This plan implements **Stage 1** of the Proactive Notification Panel feature using **Chainlit's native APIs** (`cl.Message` + `cl.Action`). Instead of fighting Chainlit's React context isolation with CustomElement, we leverage the framework's built-in capabilities.
 
-**Key Design Decision**: Instead of hardcoding mock alerts in Python, we'll drive notifications from JSON files that simulate API responses. This approach:
-- ✅ Simulates real API structure
-- ✅ Easy to modify without code changes
-- ✅ Testable with different JSON scenarios
-- ✅ Production-ready (swap loader for HTTP client when ready)
+**Key Design Decision**: Use **"In-Stream" Notification Strategy** - notifications appear as high-priority messages in the chat feed with action buttons, not in a separate side panel.
+
+### Why This Approach
+
+✅ **Stable**: Uses standard Chainlit APIs (`cl.Message`, `cl.Action`)  
+✅ **No React Hacking**: Avoids Chainlit's strict React context isolation  
+✅ **Mobile Friendly**: Native messages scale perfectly  
+✅ **History Persistence**: Alerts become part of chat history (audit trail)  
+✅ **Production Ready**: Easy to extend with real API integration
 
 ---
 
 ## Cross-References
 
-- **Feature Documentation**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature specification, UX flow, and evolution stages
-- **Architecture Patterns**: [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core architectural patterns (State-based communication, Prompt-driven reasoning)
+- **Feature Documentation**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature specification
+- **Architecture Patterns**: [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core architectural patterns
 - **Chainlit Integration**: [`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
 
 ---
 
 ## Implementation Checklist
 
-### Phase 1: JSON-Driven Notification System ✅
+### Phase 1: JSON-Driven Notification System
 
 - [ ] Create `config/notifications/` directory
 - [ ] Create `config/notifications/mock_alerts.json` with alert templates
@@ -37,36 +42,45 @@ This plan implements **Stage 1** of the Proactive Notification Panel feature, tr
 - [ ] Add JSON validation and error handling
 - [ ] Add auto-creation of default JSON if missing
 
-### Phase 2: Background Monitor Integration ✅
+### Phase 2: Background Monitor (Native Messages)
 
-- [ ] Update `src/interface/chainlit/handlers.py` with `background_monitor()` function
-- [ ] Integrate `NotificationLoader` into background monitor
+- [ ] Create `background_monitor()` async function in `handlers.py`
+- [ ] Integrate `NotificationLoader` to get alerts
+- [ ] Send alerts as `cl.Message` with `author="System"`
+- [ ] Add visual distinction (🚨 emoji, formatted content)
 - [ ] Support multiple playback modes (streaming, static, replay)
 - [ ] Add error handling and retry logic
-- [ ] Add logging for alert push events
+- [ ] Start monitor task in `@cl.on_chat_start`
 
-### Phase 3: React Component ✅
+### Phase 3: Action Buttons
 
-- [ ] Create `public/elements/NotificationPanel.jsx` React component
-- [ ] Implement alert rendering with severity colors
-- [ ] Add click handler for context injection
-- [ ] Style alerts with hover effects
-- [ ] Display agent emojis and timestamps
+- [ ] Create `cl.Action` buttons for each alert ("Fix Issue", "Dismiss")
+- [ ] Attach actions to alert messages
+- [ ] Include alert payload in action for context injection
+- [ ] Style actions appropriately (icons, labels)
 
-### Phase 4: Context Injection ✅
+### Phase 4: Action Callbacks
 
-- [ ] Update `main()` function in `handlers.py` to detect `SYSTEM_TRIGGER:` messages
-- [ ] Extract context from notification click events
-- [ ] Format context-injected messages for Orchestrator
-- [ ] Test routing to appropriate agents
+- [ ] Create `@cl.action_callback("fix_alert")` handler
+- [ ] Extract alert payload from action
+- [ ] Send acknowledgment message
+- [ ] Inject context into Orchestrator (trigger investigation)
+- [ ] Create `@cl.action_callback("dismiss_alert")` handler
+- [ ] Remove action buttons after handling
 
-### Phase 5: Panel Initialization ✅
+### Phase 5: Context Injection
 
-- [ ] Update `start()` function in `handlers.py`
-- [ ] Create `NotificationPanel` CustomElement on chat start
-- [ ] Store panel reference in `cl.user_session`
-- [ ] Start background monitor task
-- [ ] Test panel appears in right sidebar
+- [ ] Update `main()` function to handle context-injected messages
+- [ ] Format alert context as natural language prompt
+- [ ] Route to appropriate agent via Orchestrator
+- [ ] Test end-to-end flow (alert → action → investigation)
+
+### Phase 6: Styling (Optional)
+
+- [ ] Add CSS rules for System alert messages
+- [ ] Style alert messages with colored borders
+- [ ] Ensure mobile-friendly display
+- [ ] Test visual distinction from regular messages
 
 ---
 
@@ -80,12 +94,13 @@ agent_orchestration_poc/
 ├── src/
 │   └── interface/
 │       └── chainlit/
-│           ├── handlers.py           # Updated with background_monitor()
+│           ├── handlers.py           # Updated with background_monitor() + action callbacks
 │           └── notification_loader.py  # NEW: JSON loader module
 └── public/
-    └── elements/
-        └── NotificationPanel.jsx     # NEW: React component
+    └── custom.css                     # Updated with alert styling (optional)
 ```
+
+**Note**: No React components, no CustomElement, no `public/elements/` directory needed.
 
 ---
 
@@ -114,42 +129,6 @@ agent_orchestration_poc/
       "details": "Current spend: $12K of $20K budget. Expected: $16K by now.",
       "timestamp": null,
       "delay_seconds": 5
-    },
-    {
-      "id": "alert_002",
-      "agent": "optimizer",
-      "issue_type": "bid_too_low",
-      "severity": "warning",
-      "message": "Deal 12345 has low win rate (2.1%).",
-      "campaign_id": null,
-      "deal_id": "12345",
-      "details": "Win rate below 3% threshold. Consider increasing bid cap.",
-      "timestamp": null,
-      "delay_seconds": 35
-    },
-    {
-      "id": "alert_003",
-      "agent": "specialist",
-      "issue_type": "geo_conflict",
-      "severity": "critical",
-      "message": "Deal 67890: Geo targeting conflict detected.",
-      "campaign_id": null,
-      "deal_id": "67890",
-      "details": "Both buyer and seller have geo-targeting. CTV deal with 68% delivery drop.",
-      "timestamp": null,
-      "delay_seconds": 65
-    },
-    {
-      "id": "alert_004",
-      "agent": "pathfinder",
-      "issue_type": "qps_limit",
-      "severity": "info",
-      "message": "SSP 'PubMatic' approaching QPS limit.",
-      "campaign_id": null,
-      "deal_id": null,
-      "details": "Current: 8.2K QPS of 10K limit. Consider traffic allocation.",
-      "timestamp": null,
-      "delay_seconds": 95
     }
   ],
   "settings": {
@@ -161,160 +140,278 @@ agent_orchestration_poc/
 }
 ```
 
-**Fields**:
-- `id`: Unique alert identifier (can be auto-generated)
-- `agent`: Which agent detected the issue (`guardian`, `optimizer`, `specialist`, `pathfinder`)
-- `issue_type`: Type of issue (`under_pacing`, `bid_too_low`, `geo_conflict`, `qps_limit`)
-- `severity`: Alert severity (`critical`, `warning`, `info`)
-- `message`: Human-readable alert message
-- `campaign_id`: Optional campaign identifier
-- `deal_id`: Optional deal identifier
-- `details`: Additional context/details
-- `timestamp`: Auto-generated when alert is loaded (set to `null` in JSON)
-- `delay_seconds`: For replay mode - delay before showing this alert
-
-**Settings**:
-- `mode`: `streaming` (one at a time), `static` (all at once), `replay` (use delay_seconds)
-- `loop`: Whether to loop back to start when all alerts shown
-- `interval_seconds`: Default interval between alerts (streaming mode)
-- `max_alerts`: Maximum number of alerts to show in panel
+**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#json-alert-structure) for complete structure.
 
 ---
 
-### 2. Notification Loader Module
+### 2. Background Monitor
 
-**File**: `src/interface/chainlit/notification_loader.py`
+**File**: `src/interface/chainlit/handlers.py` (add `background_monitor()` function)
 
-**Purpose**: Load alerts from JSON files, simulate API responses, support multiple playback modes.
+**Purpose**: Simulates proactive alerts by sending `cl.Message` objects with action buttons.
 
-**Key Features**:
-- Loads JSON from `config/notifications/mock_alerts.json`
-- Auto-creates default JSON if missing
-- Supports streaming, static, and replay modes
-- Adds dynamic fields (timestamp, ID) at runtime
-- Validates JSON structure
-- Singleton pattern for efficiency
+**Implementation**:
 
-**API**:
 ```python
-loader = NotificationLoader(json_path=None)  # Uses default path
-settings = loader.get_settings()              # Get settings dict
-alert = loader.get_next_alert()              # Get next alert (streaming)
-alerts = loader.get_all_alerts()             # Get all alerts (static)
-loader.reset()                                # Reset to beginning
-loader.reload()                               # Reload JSON file
+async def background_monitor():
+    """
+    Background task that monitors for alerts and sends them as Chainlit messages.
+    
+    Supports three playback modes:
+    - streaming: Alerts appear one at a time
+    - static: All alerts appear at once
+    - replay: Uses delay_seconds from each alert for precise timing
+    """
+    # Wait for UI initialization
+    await asyncio.sleep(10)
+    
+    # Check if feature is enabled
+    if not os.getenv("NOTIFICATION_PANEL_ENABLED", "false").lower() == "true":
+        logger.debug("Notification panel disabled via feature flag")
+        return
+    
+    if _notification_loader is None:
+        logger.warning("NotificationLoader not available, skipping background monitor")
+        return
+    
+    try:
+        # Load NotificationLoader singleton
+        loader = _notification_loader.get_instance()
+        settings = loader.get_settings()
+        mode = settings.get("mode", "streaming")
+        loop = settings.get("loop", True)
+        interval_seconds = settings.get("interval_seconds", 30)
+        max_alerts = settings.get("max_alerts", 10)
+        
+        logger.info(f"🔔 Background monitor started (mode: {mode}, interval: {interval_seconds}s)")
+        
+        while True:
+            try:
+                if mode == "streaming":
+                    # Get next alert
+                    alert = loader.get_next_alert()
+                    if alert:
+                        await _send_alert_message(alert)
+                        await asyncio.sleep(interval_seconds)
+                    else:
+                        if loop:
+                            loader.reset()
+                            await asyncio.sleep(interval_seconds)
+                        else:
+                            break
+                
+                elif mode == "static":
+                    # Load all alerts at once
+                    alerts = loader.get_all_alerts()[:max_alerts]
+                    for alert in alerts:
+                        await _send_alert_message(alert)
+                    await asyncio.sleep(300)  # Wait 5 minutes
+                
+                elif mode == "replay":
+                    # Use delay_seconds from each alert
+                    alerts = loader.get_all_alerts()[:max_alerts]
+                    for alert in alerts:
+                        await _send_alert_message(alert)
+                        delay = alert.get("delay_seconds", interval_seconds)
+                        await asyncio.sleep(delay)
+                    
+                    if loop:
+                        loader.reset()
+                        await asyncio.sleep(interval_seconds)
+                    else:
+                        break
+                
+            except Exception as e:
+                logger.error(f"Error in background monitor loop: {e}", exc_info=True)
+                await asyncio.sleep(60)
+    
+    except Exception as e:
+        logger.error(f"Background monitor failed: {e}", exc_info=True)
+
+
+async def _send_alert_message(alert: dict):
+    """
+    Send an alert as a Chainlit message with action buttons.
+    
+    Args:
+        alert: Alert dictionary from NotificationLoader
+    """
+    # Format message content
+    agent_emoji = {
+        'guardian': '🛡️',
+        'specialist': '🔧',
+        'optimizer': '🎯',
+        'pathfinder': '🧭'
+    }.get(alert.get('agent'), '🤖')
+    
+    severity_emoji = {
+        'critical': '🚨',
+        'warning': '⚠️',
+        'info': 'ℹ️'
+    }.get(alert.get('severity'), '📢')
+    
+    agent_name = alert.get('agent', 'System').capitalize()
+    issue_type = alert.get('issue_type', 'issue').replace('_', ' ').title()
+    
+    # Build message content
+    content = f"{severity_emoji} **ALERT: {alert.get('message', 'Issue detected')}**\n\n"
+    content += f"**Agent**: {agent_emoji} {agent_name}\n"
+    content += f"**Type**: {issue_type}\n"
+    
+    if alert.get('campaign_id'):
+        content += f"**Campaign**: `{alert['campaign_id']}`\n"
+    if alert.get('deal_id'):
+        content += f"**Deal**: `{alert['deal_id']}`\n"
+    
+    if alert.get('details'):
+        content += f"\n{alert['details']}"
+    
+    # Create action buttons
+    actions = [
+        cl.Action(
+            name="fix_alert",
+            value="fix",
+            label="🔧 Fix Issue",
+            payload=alert  # Include full alert for context injection
+        ),
+        cl.Action(
+            name="dismiss_alert",
+            value="dismiss",
+            label="❌ Dismiss",
+            payload={"alert_id": alert.get('id')}
+        )
+    ]
+    
+    # Send message
+    await cl.Message(
+        content=content,
+        author="System",
+        actions=actions
+    ).send()
+    
+    logger.info(f"✅ Sent alert message: {alert.get('id')} ({alert.get('agent')} - {alert.get('severity')})")
 ```
 
-**Error Handling**:
-- Logs warnings if JSON file missing (creates default)
-- Raises `ValueError` if JSON structure invalid
-- Logs errors but doesn't crash on load failures
+**Integration**: Start monitor in `@cl.on_chat_start`:
+
+```python
+@cl.on_chat_start
+async def start():
+    # ... existing setup ...
+    
+    # Start background monitor (if enabled)
+    if os.getenv("NOTIFICATION_PANEL_ENABLED", "false").lower() == "true":
+        asyncio.create_task(background_monitor())
+        logger.info("✅ Background monitor task started")
+```
 
 ---
 
-### 3. Background Monitor
+### 3. Action Callbacks
 
-**File**: `src/interface/chainlit/handlers.py` (add to existing file)
+**File**: `src/interface/chainlit/handlers.py` (add action callback handlers)
 
-**Function**: `background_monitor()`
+**Purpose**: Handle user interactions with alert action buttons.
 
-**Behavior**:
-1. Wait 5 seconds for UI initialization
-2. Load `NotificationLoader` singleton
-3. Get settings from JSON (mode, interval, max_alerts)
-4. Loop based on mode:
-   - **Streaming**: Get next alert, push to panel, wait `interval_seconds`
-   - **Static**: Load all alerts once, wait 5 minutes
-   - **Replay**: Use `delay_seconds` from each alert for precise timing
-5. Handle errors gracefully (wait 60s on error)
+**Implementation**:
 
-**Integration Points**:
-- Gets panel from `cl.user_session.get("notification_panel")`
-- Updates panel via `await panel.update(props={"notifications": [...]})`
-- Logs alert push events for debugging
+```python
+@cl.action_callback("fix_alert")
+async def on_fix_alert(action: cl.Action):
+    """
+    Handle "Fix Issue" button click - injects context and triggers investigation.
+    """
+    payload = action.payload  # Contains full alert dictionary
+    
+    # 1. Acknowledge action
+    await cl.Message(
+        content=f"✅ Investigating {payload.get('campaign_id') or payload.get('deal_id') or 'issue'}...",
+        author="System"
+    ).send()
+    
+    # 2. Build context-injected prompt
+    entity_id = payload.get('campaign_id') or payload.get('deal_id') or 'issue'
+    issue_type = payload.get('issue_type', 'issue').replace('_', ' ')
+    details = payload.get('details', '')
+    
+    user_prompt = f"Investigate {issue_type} for {entity_id}. {details}"
+    
+    # 3. Trigger investigation by calling main() with context-injected message
+    # This simulates the user asking about the alert
+    await main(cl.Message(content=user_prompt, author="User"))
+    
+    # 4. Remove action buttons (optional - keeps UI clean)
+    await action.remove()
+    
+    logger.info(f"✅ Alert investigation triggered: {payload.get('id')}")
 
-**Error Handling**:
-- Checks if panel exists before updating
-- Catches exceptions and logs with stack trace
-- Continues running even if individual alerts fail
+
+@cl.action_callback("dismiss_alert")
+async def on_dismiss_alert(action: cl.Action):
+    """
+    Handle "Dismiss" button click - removes alert from view.
+    """
+    alert_id = action.payload.get('alert_id', 'unknown')
+    
+    await cl.Message(
+        content=f"❌ Alert dismissed",
+        author="System"
+    ).send()
+    
+    await action.remove()
+    
+    logger.info(f"✅ Alert dismissed: {alert_id}")
+```
 
 ---
 
-### 4. React Component
-
-**File**: `public/elements/NotificationPanel.jsx`
-
-**Purpose**: Render alerts in Chainlit right sidebar.
-
-**Features**:
-- Displays alerts with severity-based colors (red=critical, amber=warning, blue=info)
-- Shows agent emoji, alert message, campaign/deal IDs
-- Click handler sends `SYSTEM_TRIGGER:` message to Orchestrator
-- Hover effects for better UX
-- Empty state when no alerts
-
-**Props**:
-- `notifications`: Array of alert objects from Python
-
-**Context Injection**:
-When user clicks alert, sends:
-```
-SYSTEM_TRIGGER: Focus on {campaign_id|deal_id}. Context: {issue_type}. {details}
-```
-
-**Styling**:
-- Dark theme (`#1f2937` background)
-- Severity-based border colors
-- Responsive hover effects
-- Clean typography
-
-**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#step-a-the-react-frontend) for complete component code.
-
----
-
-### 5. Context Injection Handler
+### 4. Context Injection Handler
 
 **File**: `src/interface/chainlit/handlers.py` (update `main()` function)
 
-**Purpose**: Detect `SYSTEM_TRIGGER:` messages from notification clicks and route appropriately.
+**Purpose**: Ensure context-injected messages from alerts are properly handled.
 
-**Behavior**:
-1. Check if `message.content.startswith("SYSTEM_TRIGGER:")`
-2. Extract context from trigger message
-3. Create human-readable message for chat display
-4. Use extracted context as actual message content for graph
-5. Graph routes to appropriate agent based on context
+**Implementation**: The `main()` function already handles `cl.Message` objects, so alert-triggered investigations will flow through the normal Orchestrator routing. No changes needed unless you want to add special handling for alert-triggered messages.
 
-**Format**:
-```
-SYSTEM_TRIGGER: Focus on {entity_id}. Context: {issue_type}. {details}
-```
+**Optional Enhancement**: Add a flag to distinguish alert-triggered messages:
 
-**Example**:
+```python
+@cl.on_message
+async def main(message: cl.Message):
+    # Check if this is an alert-triggered investigation
+    is_alert_triggered = message.content.startswith("Investigate")
+    
+    # ... existing message handling ...
+    # Orchestrator will route appropriately based on content
 ```
-SYSTEM_TRIGGER: Focus on Summer_2025. Context: under_pacing. Current spend: $12K of $20K budget. Expected: $16K by now.
-```
-
-**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#step-c-context-injection-handler) for implementation details.
 
 ---
 
-### 6. Panel Initialization
+### 5. Styling (Optional)
 
-**File**: `src/interface/chainlit/handlers.py` (update `start()` function)
+**File**: `public/custom.css`
 
-**Changes**:
-1. Create `NotificationPanel` CustomElement with empty notifications
-2. Store panel reference in `cl.user_session.set("notification_panel", panel)`
-3. Start background monitor task: `asyncio.create_task(background_monitor())`
-4. Log initialization success
+**Purpose**: Make alert messages visually distinct from regular chat messages.
 
-**Timing**:
-- Panel created immediately on chat start
-- Background monitor waits 5 seconds before first alert
-- Alerts appear progressively based on mode
+**Implementation**:
 
-**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#update-start-function-in-handlerspy) for code.
+```css
+/* Style System Alert Messages */
+.message-system {
+    border-left: 4px solid #ef4444 !important; /* Red border for alerts */
+    background-color: #fef2f2 !important; /* Light red background */
+    padding: 12px !important;
+    border-radius: 8px !important;
+    margin: 8px 0 !important;
+}
+
+/* Style action buttons for alerts */
+.message-system .action-button {
+    margin-top: 8px;
+}
+```
+
+**Note**: CSS selectors may need adjustment based on Chainlit's actual DOM structure. Inspect the rendered HTML to find exact selectors.
 
 ---
 
@@ -331,17 +428,18 @@ SYSTEM_TRIGGER: Focus on Summer_2025. Context: under_pacing. Current spend: $12K
    - Test reset() and reload()
 
 2. **Background Monitor**:
-   - Test panel update logic
-   - Test error handling
+   - Test alert message creation
+   - Test action button attachment
    - Test mode switching
+   - Test error handling
    - Test max_alerts limiting
 
 ### Integration Tests
 
 1. **End-to-End Flow**:
-   - Start chat → Panel appears
-   - Wait for alerts → Alerts appear in panel
-   - Click alert → Context injected → Agent responds
+   - Start chat → Alerts appear as messages
+   - Click "Fix Issue" → Investigation triggered
+   - Click "Dismiss" → Alert removed
    - Verify routing to correct agent
 
 2. **Mode Testing**:
@@ -349,105 +447,59 @@ SYSTEM_TRIGGER: Focus on Summer_2025. Context: under_pacing. Current spend: $12K
    - Test static mode (all alerts at once)
    - Test replay mode (precise timing)
 
-### Manual Testing
+---
 
-1. **JSON Modification**:
-   - Edit `mock_alerts.json`
-   - Reload page → Verify new alerts appear
-   - Test different modes
-   - Test loop behavior
+## Feature Flag
 
-2. **Error Scenarios**:
-   - Delete JSON file → Verify default created
-   - Invalid JSON → Verify error handling
-   - Missing panel → Verify graceful degradation
+**Environment Variable**: `NOTIFICATION_PANEL_ENABLED`
+
+- **Default**: `false` (disabled)
+- **Enable**: Set to `true` in `.env` or environment
+- **Usage**: Controls background monitor startup
 
 ---
 
-## Future Enhancements
+## Migration Path to Production
 
-### Stage 2: Real System Integration
+When ready to integrate with real system:
 
-When ready for production, replace `NotificationLoader` with real API client:
+1. **Replace NotificationLoader**:
+   - Keep same interface (`get_next_alert()`, `get_all_alerts()`)
+   - Swap JSON file loading for HTTP API calls
+   - Add authentication/authorization
 
-```python
-class APINotificationLoader:
-    def __init__(self, api_url: str, api_key: str):
-        self.api_url = api_url
-        self.api_key = api_key
-    
-    async def get_next_alert(self):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.api_url}/alerts",
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            )
-            return response.json()
-```
+2. **Real-Time Updates**:
+   - Replace polling loop with WebSocket listener
+   - Or use Chainlit's built-in event system
 
-**Migration Path**:
-1. Keep `NotificationLoader` interface
-2. Create `APINotificationLoader` with same interface
-3. Swap loader in `background_monitor()` via config/env var
-4. JSON loader remains for testing/demos
-
-### Stage 3: Advanced Features
-
-- **Alert Persistence**: Store alerts in database
-- **Alert History**: Show resolved alerts
-- **Filtering**: Filter by agent, severity, issue_type
-- **Search**: Search alerts by campaign/deal ID
-- **Real-time Updates**: WebSocket connection for live alerts
-
-**Reference**: See [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md#evolution-through-stages) for Stage 2-4 evolution.
+3. **Alert Persistence**:
+   - Store alerts in database
+   - Track alert state (new, acknowledged, dismissed, resolved)
 
 ---
 
-## Dependencies
+## Known Limitations
 
-- **Chainlit**: CustomElement API for React components
-- **asyncio**: Background task execution
-- **json**: JSON file loading
-- **pathlib**: Path handling
-- **logging**: Error logging and debugging
-
-**No new dependencies required** - all standard library or existing project dependencies.
-
----
-
-## Implementation Order
-
-1. ✅ **Create JSON structure** (`config/notifications/mock_alerts.json`)
-2. ✅ **Create NotificationLoader** (`src/interface/chainlit/notification_loader.py`)
-3. ✅ **Create React component** (`public/elements/NotificationPanel.jsx`)
-4. ✅ **Update handlers.py** (add `background_monitor()` and update `start()`)
-5. ✅ **Add context injection** (update `main()` function)
-6. ✅ **Test end-to-end flow**
-7. ✅ **Update documentation** (mark checklist items complete)
+1. **No Side Panel**: Alerts appear in chat feed (by design - more stable)
+2. **Message History**: Alerts become part of chat history (feature, not bug)
+3. **CSS Styling**: May need DOM inspection to find exact selectors
+4. **Action Persistence**: Action buttons removed after click (keeps UI clean)
 
 ---
 
 ## Success Criteria
 
-- [ ] Panel appears in right sidebar on chat start
-- [ ] Alerts appear automatically based on JSON configuration
-- [ ] Clicking alert sends context-injected message to Orchestrator
-- [ ] Orchestrator routes to appropriate agent
-- [ ] Agent responds with full context
-- [ ] Multiple modes work (streaming, static, replay)
-- [ ] Error handling graceful (missing JSON, invalid structure)
-- [ ] Logging provides visibility into alert push events
+- [ ] Alerts appear as messages in chat feed
+- [ ] Action buttons ("Fix Issue", "Dismiss") work correctly
+- [ ] Clicking "Fix Issue" triggers agent investigation
+- [ ] Clicking "Dismiss" removes alert
+- [ ] Background monitor runs without errors
+- [ ] JSON-driven system works for all modes
+- [ ] Feature flag enables/disables correctly
+- [ ] Mobile-friendly display
+- [ ] Visual distinction from regular messages
 
 ---
 
-## Related Documentation
-
-- **Feature Spec**: [`docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../docs/features/PROACTIVE_NOTIFICATION_PANEL.md) - Complete feature documentation
-- **Architecture**: [`AI_HANDOFF.md`](../AI_HANDOFF.md) - Core patterns and principles
-- **Chainlit Docs**: [`docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md`](../docs/guides/CHAINLIT_SQLITE_PERSISTENCE.md) - UI persistence considerations
-
----
-
-**Last Updated**: December 1, 2025  
-**Status**: 📋 Ready for Implementation
-
+**Last Updated**: December 2, 2025  
+**Approach**: Native Chainlit Messages + Actions (No CustomElement)
