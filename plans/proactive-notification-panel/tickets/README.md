@@ -2,15 +2,22 @@
 
 **Epic**: Proactive Notification Panel Implementation  
 **Status**: 📋 Planning  
-**Total Tickets**: 25
+**Total Tickets**: 26
 
 ---
 
 ## Ticket Status Summary
 
-- 🔴 **To Do**: 25 tickets
+- 🔴 **To Do**: 26 tickets
 - 🟡 **In Progress**: 0 tickets
 - 🟢 **Done**: 0 tickets
+
+---
+
+## Prerequisites
+
+### Prerequisite: API Verification (1 ticket)
+- **PNP-000**: Verify Chainlit CustomElement API Before Implementation ⚠️ **CRITICAL - MUST DO FIRST**
 
 ---
 
@@ -58,6 +65,12 @@
 - **Implementation Plan**: [`../proactive-notification-panel-implementation.md`](../proactive-notification-panel-implementation.md)
 - **Feature Documentation**: [`../../docs/features/PROACTIVE_NOTIFICATION_PANEL.md`](../../docs/features/PROACTIVE_NOTIFICATION_PANEL.md)
 - **Vision Integration**: [`../../docs/vision/PROGRESSIVE_AUTONOMY.md`](../../docs/vision/PROGRESSIVE_AUTONOMY.md)
+
+---
+
+## ⚠️ Important Notes
+
+**CRITICAL**: Complete **PNP-000** before starting any implementation. The previous attempt failed due to incorrect API documentation. All tickets depend on having the correct Chainlit CustomElement API verified first.
 
 ---
 
