@@ -57,7 +57,7 @@ The **Proactive Notification Panel** is the UI mechanism that transforms the rea
 - User clicks → See action details and outcome verification
 - **Panel Behavior**: Post-execution notifications, outcome verification display
 
-> **See**: [`../PROACTIVE_NOTIFICATION_PANEL.md`](../PROACTIVE_NOTIFICATION_PANEL.md) for detailed implementation specifications.
+> **See**: [`../features/PROACTIVE_NOTIFICATION_PANEL.md`](../features/PROACTIVE_NOTIFICATION_PANEL.md) for detailed implementation specifications.
 
 ---
 
@@ -1012,5 +1012,5 @@ Geo conflicts: 12/12 approved → 12/12 successful (100%)
 - [System of Record](SYSTEM_OF_RECORD.md)
 - [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md)
 - [Agentic Vision Overview](README.md)
-- [Proactive Notification Panel](../PROACTIVE_NOTIFICATION_PANEL.md) - UI mechanism that materializes progressive autonomy stages
+- [Proactive Notification Panel](../features/PROACTIVE_NOTIFICATION_PANEL.md) - UI mechanism that materializes progressive autonomy stages
 
