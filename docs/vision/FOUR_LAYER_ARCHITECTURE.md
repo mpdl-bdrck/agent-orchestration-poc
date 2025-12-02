@@ -1,4 +1,4 @@
-# Three-Layer Architecture
+# Four-Layer Architecture
 ## The Foundation for Autonomous Intelligence
 
 > **Core Principle**: Separate coordination (Orchestrator), intelligence (specialist agents), tool integration (LangGraph), and capabilities (tools) for maximum flexibility and reusability.
@@ -23,11 +23,12 @@
 
 ```
 ┌────────────────────────────────────────────────┐
-│  Level 4: HUMAN OPERATORS                      │
+│  EXTERNAL SUPERVISION                          │
+│  • Human Operators (oversight and governance)   │
 │  • Set policies and boundaries                 │
 │  • Review edge cases and anomalies             │
 │  • Approve high-risk changes                   │
-│  • Strategic oversight and governance          │
+│  • Strategic oversight                         │
 └────────────────┬───────────────────────────────┘
                  │ Supervises
 ┌────────────────┴───────────────────────────────┐
@@ -557,7 +558,7 @@ class CampaignOptimizer:
 
 ---
 
-### **Three-Layer**
+### **Four-Layer**
 
 **Separated** with clean interfaces:
 ```

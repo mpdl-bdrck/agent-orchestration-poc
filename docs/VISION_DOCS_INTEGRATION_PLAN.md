@@ -27,7 +27,7 @@ This plan outlines the integration of strategic vision documentation into the ma
 
 ### Files to Migrate
 1. `README.md` - Vision overview
-2. `THREE_LAYER_ARCHITECTURE.md` - Architecture foundation
+2. `FOUR_LAYER_ARCHITECTURE.md` - Architecture foundation
 3. `PROGRESSIVE_AUTONOMY.md` - 4-stage autonomy model
 4. `SYSTEM_OF_RECORD.md` - Learning engine design
 5. `TOOL_DEVELOPMENT_MATRIX.md` - Tool registry and roadmap
@@ -55,7 +55,7 @@ This plan outlines the integration of strategic vision documentation into the ma
 docs/
 ├── vision/                          # NEW: Vision & strategic planning
 │   ├── README.md                    # Vision overview (main entry point)
-│   ├── THREE_LAYER_ARCHITECTURE.md  # Architecture foundation
+│   ├── FOUR_LAYER_ARCHITECTURE.md  # Architecture foundation
 │   ├── PROGRESSIVE_AUTONOMY.md    # 4-stage autonomy model
 │   ├── SYSTEM_OF_RECORD.md         # Learning engine design
 │   └── TOOL_DEVELOPMENT_MATRIX.md  # Tool registry & roadmap
@@ -85,7 +85,7 @@ docs/
 
 ### File-Specific Updates
 
-#### 2.1 THREE_LAYER_ARCHITECTURE.md
+#### 2.1 FOUR_LAYER_ARCHITECTURE.md
 
 **Updates Required**:
 - [ ] Replace "Level 2: MCP" with "Level 2: LangGraph Tool Integration"
@@ -223,10 +223,10 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
 - [ ] Add new "I Want to Understand..." entry:
   ```markdown
   **"What is the Orchestrator Agent?"**
-  → The Orchestrator is the central supervisor that routes user questions to appropriate specialist agents or answers directly. See [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md) for details.
+  → The Orchestrator is the central supervisor that routes user questions to appropriate specialist agents or answers directly. See [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md) for details.
   ```
 
-#### 3.2 THREE_LAYER_ARCHITECTURE.md
+#### 3.2 FOUR_LAYER_ARCHITECTURE.md
 
 **Updates Required**:
 - [ ] Add new section "The Orchestrator Agent (Coordination Layer)" after "Complete Stack Diagram"
@@ -346,7 +346,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
 
   ### Vision & Strategic Planning
   - **`docs/vision/README.md`**: Vision for autonomous deal optimization & supply chain management
-  - **`docs/vision/THREE_LAYER_ARCHITECTURE.md`**: Foundation architecture separating intelligence, communication, and capabilities
+  - **`docs/vision/FOUR_LAYER_ARCHITECTURE.md`**: Foundation architecture separating coordination, intelligence, tool integration, and capabilities
   - **`docs/vision/PROGRESSIVE_AUTONOMY.md`**: Four-stage evolution from alerts to autonomous action
   - **`docs/vision/SYSTEM_OF_RECORD.md`**: Learning engine design for building trust and validation
   - **`docs/vision/TOOL_DEVELOPMENT_MATRIX.md`**: Comprehensive tool registry and development roadmap
@@ -453,7 +453,7 @@ Level 0: TOOLS & KNOWLEDGE BASE (Capabilities)
 
 ## Notes
 
-- **Preserve Core Concepts**: The vision's core concepts (progressive autonomy, three-layer architecture, system of record) remain valid - only the communication layer changes
+- **Preserve Core Concepts**: The vision's core concepts (progressive autonomy, four-layer architecture, system of record) remain valid - only the communication layer changes
 - **Architecture Agnostic**: Autonomy stages and learning logic are architecture-agnostic and should remain intact
 - **Tool Status**: Update tool status tracking to reflect current direct integration (no MCP wrapper needed)
 - **Future-Proof**: Ensure updates don't lock us into current implementation details unnecessarily

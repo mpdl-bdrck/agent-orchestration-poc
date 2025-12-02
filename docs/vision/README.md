@@ -31,7 +31,7 @@ This vision outlines Bedrock Platform's evolution from manual deal debugging to 
 This vision is organized into focused, cross-referenced documents:
 
 ### **Core Architecture**
-- [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md)
+- [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md)
 
 ### **Progressive Autonomy**
 - [Progressive Autonomy](PROGRESSIVE_AUTONOMY.md)
@@ -49,7 +49,7 @@ Phase 1 and Phase 2 implementation details are distributed across the documents 
 ### I Want to Understand...
 
 **"What's the overall architecture?"**
-→ [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md)
+→ [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md)
 
 **"How do we get from alerts to autonomous action safely?"**
 → [Progressive Autonomy Model](PROGRESSIVE_AUTONOMY.md)
@@ -67,7 +67,7 @@ Phase 1 and Phase 2 implementation details are distributed across the documents 
 → See Progressive Autonomy (policy-informed stage progression)
 
 **"What is the Orchestrator Agent?"**
-→ The Orchestrator is the central supervisor that routes user questions to appropriate specialist agents or answers directly. See [Three-Layer Architecture](THREE_LAYER_ARCHITECTURE.md) for details.
+→ The Orchestrator is the central supervisor that routes user questions to appropriate specialist agents or answers directly. See [Four-Layer Architecture](FOUR_LAYER_ARCHITECTURE.md) for details.
 
 ---
 

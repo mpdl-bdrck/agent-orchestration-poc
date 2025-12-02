@@ -224,7 +224,7 @@ src/
 > **Start here**: [`docs/vision/README.md`](docs/vision/README.md) - **The strategic vision** that guides this implementation, outlining the path from reactive problem-solving to proactive autonomous optimization.
 
 - **`docs/vision/README.md`**: Vision for autonomous deal optimization & supply chain management
-- **`docs/vision/THREE_LAYER_ARCHITECTURE.md`**: Foundation architecture separating intelligence, communication, and capabilities
+- **`docs/vision/FOUR_LAYER_ARCHITECTURE.md`**: Foundation architecture separating coordination, intelligence, tool integration, and capabilities
 - **`docs/vision/PROGRESSIVE_AUTONOMY.md`**: Four-stage evolution from alerts to autonomous action
 - **`docs/vision/SYSTEM_OF_RECORD.md`**: Learning engine design for building trust and validation
 - **`docs/vision/TOOL_DEVELOPMENT_MATRIX.md`**: Comprehensive tool registry and development roadmap
