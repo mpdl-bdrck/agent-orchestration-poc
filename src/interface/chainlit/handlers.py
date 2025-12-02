@@ -87,7 +87,7 @@ async def _send_notification_message(alert: dict):
     # Map alert fields to card data structure
     agent_emoji = {
         'guardian': '🛡️',
-        'specialist': '🔧',
+        'specialist': '🔬',
         'optimizer': '🎯',
         'pathfinder': '🧭'
     }.get(alert.get('agent', '').lower(), '🤖')

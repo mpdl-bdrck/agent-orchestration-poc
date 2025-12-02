@@ -318,7 +318,10 @@ header nav > div:last-child {
     /* Base Card Styling for Dark Mode - Tinted Glass Effect */
     .notification-card {
         color: #e2e8f0 !important; /* Bright Gray Text */
-        border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle outline */
+        border-top: none !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        border-left: 1px solid rgba(255, 255, 255, 0.1); /* Subtle left outline - agent rules will override */
         backdrop-filter: blur(12px); /* Glass effect */
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }

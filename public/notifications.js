@@ -27,7 +27,7 @@ async function loadNotificationsFromJSON() {
                 agent: agentCapitalized, // Capitalized: Guardian, Optimizer, etc.
                 icon: {
                     'guardian': '🛡️',
-                    'specialist': '🔧',
+                    'specialist': '🔬',
                     'optimizer': '🎯',
                     'pathfinder': '🧭'
                 }[agentLower] || '🔔',

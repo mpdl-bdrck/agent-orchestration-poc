@@ -92,12 +92,32 @@ try:
         print("✅ AWS SSO authentication verified (bedrock profile)")
     else:
         print("⚠️  AWS SSO authentication required for portfolio pacing tool")
-        print("   Run: aws sso login --profile bedrock")
-        print("   Portfolio pacing queries may fail without AWS SSO credentials")
+        print("🔑 Running: aws sso login --profile bedrock")
+        # Automatically trigger AWS SSO login
+        login_result = subprocess.run(
+            ['aws', 'sso', 'login', '--profile', 'bedrock'],
+            timeout=60  # SSO login can take time (browser popup)
+        )
+        if login_result.returncode == 0:
+            # Verify login was successful
+            verify_result = subprocess.run(
+                ['aws', 'sts', 'get-caller-identity', '--profile', 'bedrock'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if verify_result.returncode == 0:
+                print("✅ AWS SSO authentication successful")
+            else:
+                print("⚠️  AWS SSO login completed but verification failed")
+                print("   Portfolio pacing queries may fail without AWS SSO credentials")
+        else:
+            print("⚠️  AWS SSO login failed or was cancelled")
+            print("   Portfolio pacing queries may fail without AWS SSO credentials")
 except FileNotFoundError:
     print("⚠️  AWS CLI not found. Portfolio pacing tool requires AWS SSO authentication.")
 except subprocess.TimeoutExpired:
-    print("⚠️  AWS SSO check timed out. Portfolio pacing queries may fail.")
+    print("⚠️  AWS SSO check/login timed out. Portfolio pacing queries may fail.")
 except Exception as e:
     print(f"⚠️  AWS SSO check failed: {e}. Portfolio pacing queries may fail.")
 
