@@ -11,7 +11,7 @@
 
 This vision outlines Bedrock Platform's evolution from manual deal debugging to a fully autonomous, multi-agent ecosystem that monitors, diagnoses, and optimizes programmatic advertising operations 24/7.
 
-**Strategic Goal**: Move from **reactive problem-solving** (humans find and fix issues) to **proactive autonomous optimization** (agents prevent issues and optimize continuously).
+**Strategic Goal**: Progressively move from **reactive problem-solving** (humans find and fix issues) to **proactive autonomous optimization** (agents prevent issues and optimize continuously).
 
 **Foundation**: Four-layer architecture separating coordination (Orchestrator), intelligence (specialist agents), tool integration (LangGraph), and capabilities (tools) for maximum flexibility and reusability.
 
