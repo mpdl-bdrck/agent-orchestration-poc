@@ -70,6 +70,14 @@ else:
     # User explicitly disabled it - respect that
     os.environ["GUARDIAN_TOOLS_ENABLED"] = "false"
 
+# Notification Panel feature flag
+# Disabled by default - set NOTIFICATION_PANEL_ENABLED=true to enable
+notification_panel_value = os.environ.get("NOTIFICATION_PANEL_ENABLED", "").lower()
+if notification_panel_value in ("true", "1", "yes", "on"):
+    os.environ["NOTIFICATION_PANEL_ENABLED"] = "true"
+else:
+    os.environ["NOTIFICATION_PANEL_ENABLED"] = "false"
+
 # Check AWS SSO authentication for portfolio pacing tool
 # This is required for Redshift database connections
 import subprocess

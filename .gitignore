@@ -72,6 +72,9 @@ tools/reports/
 # IDE/Tool temporary folders
 .files/
 
+# Plans and implementation notes
+plans/
+
 # Langfuse
 .langfuse/
 

@@ -43,26 +43,6 @@ The system orchestrates five agents:
 
 *Figure: High-level Supervisor Architecture showing the flow between Orchestrator, Agents, and Shared State.*
 
-```mermaid
-graph TD
-    UserInput --> Orchestrator
-    Orchestrator --"RouteDecision"--> Router{Condition}
-    
-    Router --"next='guardian'"--> GuardianNode
-    Router --"next='specialist'"--> SpecialistNode
-    Router --"next='optimizer'"--> OptimizerNode
-    Router --"next='pathfinder'"--> PathfinderNode
-    Router --"next='semantic_search'"--> SearchServiceNode
-    
-    GuardianNode --> Orchestrator
-    SpecialistNode --> Orchestrator
-    OptimizerNode --> Orchestrator
-    PathfinderNode --> Orchestrator
-    SearchServiceNode --> Orchestrator
-    
-    Router --"next='FINISH'"--> End
-```
-
 ## 🚀 Quick Start
 
 ### 1. Prerequisites

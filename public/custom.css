@@ -159,3 +159,283 @@ header nav > div:last-child {
     word-break: break-all !important;
     overflow-wrap: anywhere !important;
 }
+
+/* ============================================================================
+   Notification Panel - DOM Bridge Architecture
+   Hides transport messages and styles floating sidebar overlay
+   ============================================================================ */
+
+/* 1. HIDE the Data Transport Messages - AGGRESSIVE */
+[data-hidden="true"],
+[data-notification-processed="true"],
+.cl-message[data-hidden="true"],
+.message-row[data-hidden="true"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+    pointer-events: none !important;
+    z-index: -9999 !important;
+}
+
+/* Hide messages with __NOTIFY__ author attribute */
+.cl-message[author="__NOTIFY__"],
+[data-author="__NOTIFY__"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* 2. The Floating Sidebar Container - FORCE VISIBILITY */
+#custom-notification-panel {
+    position: fixed !important;
+    top: 80px !important; /* Below header */
+    right: 20px !important;
+    width: 320px !important;
+    max-width: calc(100vw - 40px) !important; /* Responsive on mobile */
+    height: calc(100vh - 100px) !important;
+    background: transparent !important; /* Transparent so clicks pass through empty areas */
+    z-index: 0 !important; /* ZERO z-index - chat is usually 100-1000, this stays behind */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    pointer-events: none !important; /* CRITICAL: Container doesn't block clicks */
+    padding-bottom: 20px !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    /* Ensure it doesn't block chat interactions */
+    max-height: calc(100vh - 100px) !important;
+    /* Ensure panel stays on right side only - don't overlap chat */
+    left: auto !important;
+    /* Make absolutely sure it doesn't interfere */
+    touch-action: none !important;
+    /* Ensure it's behind everything */
+    isolation: isolate !important;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    #custom-notification-panel {
+        width: calc(100vw - 20px);
+        right: 10px;
+        top: 60px;
+    }
+}
+
+/* 3. The Notification Cards */
+.notification-card {
+    background: white;
+    border-left: 5px solid #0F52BA; /* Corporate Blue (default) */
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: auto !important; /* Cards are clickable */
+    transition: all 0.2s ease;
+    cursor: pointer;
+    opacity: 0;
+    animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    position: relative;
+    z-index: 1 !important; /* Cards are above panel (z-index 0) but still below chat */
+    /* Ensure cards don't extend beyond panel bounds */
+    max-width: 100%;
+    box-sizing: border-box;
+    /* Ensure cards don't block chat area */
+    position: relative !important;
+}
+
+.notification-card:hover {
+    transform: translateX(-5px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+/* Dark theme hover override - brightness boost */
+@media (prefers-color-scheme: dark) {
+    .notification-card:hover {
+        filter: brightness(1.2);
+    }
+}
+
+/* Severity Styling - Default colors (overridden by agent colors) */
+.notification-card.critical {
+    border-left-color: #ef4444; /* Red */
+    background-color: #fef2f2; /* Light red background */
+}
+
+.notification-card.warning {
+    border-left-color: #f59e0b; /* Amber */
+    background-color: #fffbeb; /* Light amber background */
+}
+
+.notification-card.info {
+    border-left-color: #3b82f6; /* Blue */
+    background-color: #eff6ff; /* Light blue background */
+}
+
+/* Agent colors override severity colors - USE background (not background-color) to override base rule */
+/* REMOVED: These were being overridden by the more specific rules below */
+
+/* Agent-based colors for better distinction - LIGHT THEME ONLY */
+/* These are overridden by dark theme rules below */
+@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+    .notification-card[data-agent="guardian"],
+    .notification-card.guardian {
+        border-left-color: #8b5cf6 !important; /* Purple */
+        background: #f5f3ff !important; /* Light purple background */
+    }
+
+    .notification-card[data-agent="optimizer"],
+    .notification-card.optimizer {
+        border-left-color: #f59e0b !important; /* Amber/Orange */
+        background: #fff7ed !important; /* Light orange background (different from amber) */
+    }
+
+    .notification-card[data-agent="specialist"],
+    .notification-card.specialist {
+        border-left-color: #14b8a6 !important; /* Teal */
+        background: #f0fdfa !important; /* Light teal background */
+    }
+
+    .notification-card[data-agent="pathfinder"],
+    .notification-card.pathfinder {
+        border-left-color: #3b82f6 !important; /* Blue */
+        background: #eff6ff !important; /* Light blue background */
+    }
+}
+
+/* Dark theme agent colors - Tinted Glass Aesthetic */
+@media (prefers-color-scheme: dark) {
+    /* Base Card Styling for Dark Mode - Tinted Glass Effect */
+    .notification-card {
+        color: #e2e8f0 !important; /* Bright Gray Text */
+        border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle outline */
+        backdrop-filter: blur(12px); /* Glass effect */
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    }
+
+    /* 🛡️ Guardian: Modern Indigo/Violet - FORCE DISTINCT */
+    .notification-card[data-agent="guardian"],
+    .notification-card.guardian,
+    .notification-card.guardian[data-agent="guardian"] {
+        /* Tinted Background - Increased opacity and more purple */
+        background: linear-gradient(90deg, rgba(76, 29, 149, 0.7) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+        /* Neon Accent Border */
+        border-left-color: #a78bfa !important; /* Soft Violet */
+        border-left-width: 5px !important;
+    }
+    
+    /* 🎯 Optimizer: Burnt Amber/Gold - FORCE DISTINCT */
+    .notification-card[data-agent="optimizer"],
+    .notification-card.optimizer,
+    .notification-card.optimizer[data-agent="optimizer"] {
+        /* More distinct orange/amber - brighter and more saturated */
+        background: linear-gradient(90deg, rgba(217, 119, 6, 0.7) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+        border-left-color: #fbbf24 !important; /* Bright Amber */
+        border-left-width: 5px !important;
+    }
+    
+    /* 🔧 Specialist: Deep Teal/Emerald */
+    .notification-card[data-agent="specialist"],
+    .notification-card.specialist,
+    .notification-card.specialist[data-agent="specialist"] {
+        background: linear-gradient(90deg, rgba(6, 78, 59, 0.7) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+        border-left-color: #2dd4bf !important; /* Bright Teal */
+        border-left-width: 5px !important;
+    }
+    
+    /* 🧭 Pathfinder: Electric Blue */
+    .notification-card[data-agent="pathfinder"],
+    .notification-card.pathfinder,
+    .notification-card.pathfinder[data-agent="pathfinder"] {
+        background: linear-gradient(90deg, rgba(30, 58, 138, 0.7) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+        border-left-color: #60a5fa !important; /* Bright Blue */
+        border-left-width: 5px !important;
+    }
+    
+    /* Hover State: Slight Brightness Boost */
+    .notification-card:hover {
+        filter: brightness(1.2);
+        transform: translateX(-5px);
+    }
+}
+
+/* Dark theme support - Base card styling handled in agent colors block above */
+/* Severity-based colors (if no agent class) */
+@media (prefers-color-scheme: dark) {
+    .notification-card.critical {
+        background: linear-gradient(90deg, rgba(127, 29, 29, 0.6) 0%, rgba(30, 41, 59, 0.85) 100%) !important;
+        border-left-color: #ef4444 !important;
+    }
+    
+    .notification-card.warning {
+        background: linear-gradient(90deg, rgba(120, 53, 15, 0.6) 0%, rgba(30, 41, 59, 0.85) 100%) !important;
+        border-left-color: #f59e0b !important;
+    }
+    
+    .notification-card.info {
+        background: linear-gradient(90deg, rgba(30, 58, 138, 0.6) 0%, rgba(30, 41, 59, 0.85) 100%) !important;
+        border-left-color: #3b82f6 !important;
+    }
+}
+
+/* Slide-in Animation */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Card Content Styling */
+.notification-card .card-header {
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1em;
+}
+
+.notification-card .card-icon {
+    font-size: 1.2em;
+}
+
+.notification-card .card-message {
+    font-size: 0.9em;
+    color: #374151;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.notification-card .card-hint {
+    font-size: 0.75em;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-style: italic;
+}
+
+/* Dark theme text colors */
+@media (prefers-color-scheme: dark) {
+    .notification-card .card-message {
+        color: #d1d5db;
+    }
+    
+    .notification-card .card-hint {
+        color: #9ca3af;
+    }
+}

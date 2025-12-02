@@ -1,0 +1,158 @@
+/* ============================================================================
+   Notification Panel - DOM Bridge Architecture
+   Hides transport messages and styles floating sidebar overlay
+   ============================================================================ */
+
+/* 1. HIDE the Data Transport Messages */
+/* Target messages where the author is __NOTIFY__ */
+.message-row:has(.user-name:contains("__NOTIFY__")),
+.message-row:has([data-author="__NOTIFY__"]) {
+    display: none !important;
+}
+
+/* Fallback: Hide rows containing JSON signature */
+.message-row:has(.markdown-body:contains('{"agent":')) {
+    display: none !important;
+}
+
+/* Additional fallback: Hide by content pattern */
+.message-row:has(code:contains('"__NOTIFY__"')) {
+    display: none !important;
+}
+
+/* 2. The Floating Sidebar Container */
+#custom-notification-panel {
+    position: fixed;
+    top: 80px; /* Below header */
+    right: 20px;
+    width: 320px;
+    max-width: calc(100vw - 40px); /* Responsive on mobile */
+    height: calc(100vh - 100px);
+    background: transparent; /* Transparent so clicks pass through empty areas */
+    z-index: 9999;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none; /* Allow clicks to pass through the container itself */
+    padding-bottom: 20px;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    #custom-notification-panel {
+        width: calc(100vw - 20px);
+        right: 10px;
+        top: 60px;
+    }
+}
+
+/* 3. The Notification Cards */
+.notification-card {
+    background: white;
+    border-left: 5px solid #0F52BA; /* Corporate Blue (default) */
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: auto; /* Re-enable clicking on the cards */
+    transition: all 0.2s ease;
+    cursor: pointer;
+    opacity: 0;
+    animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    position: relative;
+}
+
+.notification-card:hover {
+    transform: translateX(-5px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+/* Severity Styling */
+.notification-card.critical {
+    border-left-color: #ef4444; /* Red */
+    background-color: #fef2f2; /* Light red background */
+}
+
+.notification-card.warning {
+    border-left-color: #f59e0b; /* Amber */
+    background-color: #fffbeb; /* Light amber background */
+}
+
+.notification-card.info {
+    border-left-color: #3b82f6; /* Blue */
+    background-color: #eff6ff; /* Light blue background */
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+    .notification-card {
+        background: #1f2937; /* Dark gray */
+        color: #f9fafb;
+    }
+    
+    .notification-card.critical {
+        background-color: #7f1d1d; /* Dark red */
+    }
+    
+    .notification-card.warning {
+        background-color: #78350f; /* Dark amber */
+    }
+    
+    .notification-card.info {
+        background-color: #1e3a8a; /* Dark blue */
+    }
+}
+
+/* Slide-in Animation */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Card Content Styling */
+.notification-card .card-header {
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1em;
+}
+
+.notification-card .card-icon {
+    font-size: 1.2em;
+}
+
+.notification-card .card-message {
+    font-size: 0.9em;
+    color: #374151;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.notification-card .card-hint {
+    font-size: 0.75em;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-style: italic;
+}
+
+/* Dark theme text colors */
+@media (prefers-color-scheme: dark) {
+    .notification-card .card-message {
+        color: #d1d5db;
+    }
+    
+    .notification-card .card-hint {
+        color: #9ca3af;
+    }
+}
+

@@ -1,0 +1,64 @@
+{
+  "metadata": {
+    "source": "mock_api",
+    "version": "1.0",
+    "description": "Mock alerts simulating Guardian/Optimizer/Specialist/Pathfinder detection"
+  },
+  "alerts": [
+    {
+      "id": "alert_001",
+      "agent": "guardian",
+      "issue_type": "under_pacing",
+      "severity": "warning",
+      "message": "Campaign 'Summer_2025' is under-pacing by 40%.",
+      "campaign_id": "Summer_2025",
+      "deal_id": null,
+      "details": "Current spend: $12K of $20K budget. Expected: $16K by now.",
+      "timestamp": null,
+      "delay_seconds": 5
+    },
+    {
+      "id": "alert_002",
+      "agent": "optimizer",
+      "issue_type": "bid_too_low",
+      "severity": "warning",
+      "message": "Deal 12345 has low win rate (2.1%).",
+      "campaign_id": null,
+      "deal_id": "12345",
+      "details": "Win rate below 3% threshold. Consider increasing bid cap.",
+      "timestamp": null,
+      "delay_seconds": 35
+    },
+    {
+      "id": "alert_003",
+      "agent": "specialist",
+      "issue_type": "geo_conflict",
+      "severity": "critical",
+      "message": "Deal 67890: Geo targeting conflict detected.",
+      "campaign_id": null,
+      "deal_id": "67890",
+      "details": "Both buyer and seller have geo-targeting. CTV deal with 68% delivery drop.",
+      "timestamp": null,
+      "delay_seconds": 65
+    },
+    {
+      "id": "alert_004",
+      "agent": "pathfinder",
+      "issue_type": "qps_limit",
+      "severity": "info",
+      "message": "SSP 'PubMatic' approaching QPS limit.",
+      "campaign_id": null,
+      "deal_id": null,
+      "details": "Current: 8.2K QPS of 10K limit. Consider traffic allocation.",
+      "timestamp": null,
+      "delay_seconds": 95
+    }
+  ],
+  "settings": {
+    "mode": "streaming",
+    "loop": true,
+    "interval_seconds": 30,
+    "max_alerts": 10
+  }
+}
+

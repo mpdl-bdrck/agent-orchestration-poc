@@ -3,7 +3,10 @@ Chainlit Decorators and Main Message Handler.
 
 Contains all Chainlit decorator functions (@cl.set_starters, @cl.on_chat_start, @cl.on_message).
 """
+import asyncio
+import json
 import logging
+import os
 
 from .config import (
     cl,
@@ -21,6 +24,96 @@ from .event_handlers import (
 # CSV is handled in event_handlers.py on_chat_model_end - no need to import here
 
 logger = logging.getLogger(__name__)
+
+# Import notification loader only if feature is enabled
+_notification_loader = None
+if os.getenv("NOTIFICATION_PANEL_ENABLED", "false").lower() == "true":
+    try:
+        from .notification_loader import NotificationLoader
+        _notification_loader = NotificationLoader
+    except ImportError as e:
+        logger.warning(f"Failed to import NotificationLoader: {e}")
+
+
+async def background_monitor():
+    """
+    SIMPLE POC: Queue notifications on page load, send after user's first message.
+    This prevents navigation away from starter screen.
+    JavaScript renders them as cards in the sidebar.
+    """
+    # Check if already queued for this session
+    if cl.user_session.get("notifications_queued"):
+        logger.debug("Notifications already queued, skipping")
+        return
+    
+    # Wait for UI to load
+    await asyncio.sleep(3)
+    
+    # Check if feature is enabled
+    if not os.getenv("NOTIFICATION_PANEL_ENABLED", "false").lower() == "true":
+        logger.debug("Notification panel disabled via feature flag")
+        return
+    
+    if _notification_loader is None:
+        logger.warning("NotificationLoader not available, skipping")
+        return
+    
+    try:
+        loader = _notification_loader.get_instance()
+        alerts = loader.get_all_alerts()
+        
+        if not alerts:
+            logger.debug("No alerts to send")
+            return
+        
+        # CRITICAL: Queue notifications instead of sending immediately
+        # This prevents navigation away from starter screen
+        # They'll be sent after user sends first message (in @cl.on_message)
+        cl.user_session.set("pending_notifications", alerts)
+        cl.user_session.set("notifications_queued", True)
+        logger.info(f"📋 Queued {len(alerts)} notification(s) - will send after first user message")
+    
+    except Exception as e:
+        logger.error(f"Background monitor failed: {e}", exc_info=True)
+
+
+async def _send_notification_message(alert: dict):
+    """
+    Send an alert as a hidden transport message with JSON payload.
+    
+    Args:
+        alert: Alert dictionary from NotificationLoader
+    """
+    # Map alert fields to card data structure
+    agent_emoji = {
+        'guardian': '🛡️',
+        'specialist': '🔧',
+        'optimizer': '🎯',
+        'pathfinder': '🧭'
+    }.get(alert.get('agent', '').lower(), '🤖')
+    
+    # Build context string for agent trigger
+    entity_id = alert.get('campaign_id') or alert.get('deal_id') or 'issue'
+    issue_type = alert.get('issue_type', 'issue').replace('_', ' ')
+    details = alert.get('details', '')
+    context = f"Investigate {issue_type} for {entity_id}. {details}"
+    
+    # Format as JSON payload
+    payload = {
+        "agent": alert.get('agent', 'System').capitalize(),
+        "icon": agent_emoji,
+        "severity": alert.get('severity', 'info'),
+        "message": alert.get('message', 'Issue detected'),
+        "context": context
+    }
+    
+    # Send as hidden message with JSON in code block
+    await cl.Message(
+        content=f"```json\n{json.dumps(payload)}\n```",
+        author="__NOTIFY__"
+    ).send()
+    
+    logger.info(f"✅ Sent notification message: {alert.get('id')} ({alert.get('agent')} - {alert.get('severity')})")
 
 
 @cl.set_starters
@@ -65,6 +158,13 @@ async def start():
         logger.debug("✅ Avatar system: Chainlit will auto-load avatars from /public/avatars/")
         logger.debug("   Avatars should be named: orchestrator.png, guardian.png, specialist.png, etc.")
         
+        # Start background monitor (if enabled) - only once per session
+        if os.getenv("NOTIFICATION_PANEL_ENABLED", "false").lower() == "true":
+            if not cl.user_session.get("background_monitor_started"):
+                asyncio.create_task(background_monitor())
+                cl.user_session.set("background_monitor_started", True)
+                logger.info("✅ Background monitor task started")
+        
         # NOTE: No welcome message - this keeps the chat 'empty' so Starter buttons stay visible
     except Exception as e:
         logger.error(f"Failed to initialize Chainlit session: {e}", exc_info=True)
@@ -79,6 +179,10 @@ async def start():
 async def main(message: cl.Message):
     """Handle user message and stream graph events."""
     try:
+        # NOTE: Notifications are now loaded directly from JSON by JavaScript
+        # No need to send messages - cards appear immediately on starter screen
+        # This prevents navigation and allows cards to persist across chat sessions
+        
         # 1. Get graph and history from session
         graph = cl.user_session.get("graph")
         if not graph:
