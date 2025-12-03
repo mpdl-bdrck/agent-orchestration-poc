@@ -75,6 +75,9 @@ tools/reports/
 # Plans and implementation notes
 plans/
 
+# AI handoff documentation
+AI_HANDOFF.md
+
 # Langfuse
 .langfuse/
 
